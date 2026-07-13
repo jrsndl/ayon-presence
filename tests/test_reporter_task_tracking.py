@@ -87,6 +87,19 @@ def test_switching_native_context_stops_previous_task_first():
     assert events[2][1]["task_name"] == "Lighting"
 
 
+def test_workfile_update_does_not_restart_task_interval():
+    reporter, events = _reporter()
+    reporter.task_selected({**CONTEXT, "dcc_name": "Nuke", "workfile_name": "a.nk"})
+
+    reporter.task_selected({**CONTEXT, "dcc_name": "Nuke", "workfile_name": "b.nk"})
+
+    assert [event_type for event_type, _context in events] == [
+        "task_start",
+        "task_heartbeat",
+    ]
+    assert events[-1][1]["workfile_name"] == "b.nk"
+
+
 def test_send_posts_event_fields_at_top_level(monkeypatch):
     reporter, _events = _reporter()
     payload = {

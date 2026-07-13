@@ -9,6 +9,7 @@ from ayon_core.lib.events import register_event_callback
 from .activity import ActivityMonitor
 from .reporter import PresenceReporter
 from .task_tracking import (
+    host_metadata,
     normalize_ayon_task_context,
     notify_tray_task_cleared,
     notify_tray_task_selected,
@@ -32,6 +33,7 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         self.task_tracking_enabled = settings.get("task_tracking_enabled", True)
         self._reporter = None
         self._monitor = None
+        self._host = None
 
         if platform.system().lower() != "windows":
             self.log.warning(
@@ -78,13 +80,38 @@ class PresenceAddon(AYONAddon, ITrayAddon):
     def on_host_install(self, host, host_name, project_name):
         """Follow native AYON task changes inside a running host."""
         if self.enabled and self.task_tracking_enabled:
+            self._host = host
             register_event_callback("taskChanged", self._on_host_task_change)
+            register_event_callback("workfile.open.after", self._on_workfile_change)
+            register_event_callback("workfile.save.after", self._on_workfile_change)
+            self._report_current_host_context(project_name)
 
     def _on_host_task_change(self, event):
         try:
-            notify_tray_task_selected(event, self.log)
+            context = dict(getattr(event, "data", event))
+            if self._host is not None:
+                context.update(host_metadata(self._host))
+            notify_tray_task_selected(context, self.log)
         except (TypeError, ValueError):
             notify_tray_task_cleared(self.log)
+
+    def _on_workfile_change(self, _event):
+        self._report_current_host_context()
+
+    def _report_current_host_context(self, project_name=None):
+        host = self._host
+        if host is None:
+            return
+        try:
+            context = {
+                "project_name": project_name or host.get_current_project_name(),
+                "folder_path": host.get_current_folder_path(),
+                "task_name": host.get_current_task_name(),
+            }
+            context.update(host_metadata(host))
+            notify_tray_task_selected(context, self.log)
+        except Exception:
+            self.log.debug("Presence host context is not available yet", exc_info=True)
 
     def webserver_initialization(self, server_manager):
         """Register local-only endpoints used by AYON launch/host processes."""

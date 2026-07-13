@@ -37,9 +37,13 @@ def test_task_events_require_full_context():
         folder_path="/shots/010",
         task_name="Compositing",
         task_started_at="2026-07-13T08:00:00Z",
+        dcc_name="NukeX",
+        dcc_version="15.2.1",
+        workfile_name="sh010_comp_v012.nk",
     )
     assert event.task_name == "Compositing"
     assert event.task_started_at is not None
+    assert event.dcc_name == "NukeX"
     with pytest.raises(pydantic.ValidationError):
         models.PresenceEvent(
             event_type="task_start",

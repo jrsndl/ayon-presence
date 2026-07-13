@@ -31,6 +31,9 @@ class PresenceEvent(BaseModel):
     folder_path: Optional[str] = Field(default=None, max_length=2048)
     task_name: Optional[str] = Field(default=None, max_length=255)
     task_started_at: Optional[datetime] = None
+    dcc_name: Optional[str] = Field(default=None, max_length=255)
+    dcc_version: Optional[str] = Field(default=None, max_length=128)
+    workfile_name: Optional[str] = Field(default=None, max_length=1024)
 
     @root_validator
     def validate_task_context(cls, values):

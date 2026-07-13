@@ -46,11 +46,23 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
             "folder_path": "/shots/010",
             "task_name": "Comp",
             "total_seconds": 3600,
+            "dcc_name": "NukeX",
+            "dcc_version": "15.2.1",
+            "workfile_name": "sh010_comp_v012.nk",
         }
     ]
     day_starts = [{"user_name": "alice", "day_started_at": utc(7)}]
 
-    result = dashboard.build_dashboard_rows(sessions, tasks, day_starts)
+    machine_contexts = [
+        {
+            "source_machine_name": "WS-NEW",
+            "dcc_name": "NukeX",
+            "dcc_version": "15.2.1",
+        }
+    ]
+    result = dashboard.build_dashboard_rows(
+        sessions, tasks, day_starts, machine_contexts
+    )
 
     alice = result["users"][0]
     assert alice == {
@@ -62,8 +74,14 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
         "last_folder": "/shots/010",
         "last_task": "Comp",
         "last_task_seconds": 3600,
+        "dcc": "NukeX 15.2.1",
+        "workfile": "sh010_comp_v012.nk",
         "day_started_at": utc(7),
     }
+    new_computer = next(
+        row for row in result["computers"] if row["computer_name"] == "WS-NEW"
+    )
+    assert new_computer["dcc"] == "NukeX 15.2.1"
     old_computer = next(
         row for row in result["computers"] if row["computer_name"] == "WS-OLD"
     )
