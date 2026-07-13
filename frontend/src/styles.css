@@ -1,0 +1,26 @@
+:root { color: #eef1f6; background: #111318; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+main { max-width: 1180px; margin: 0 auto; padding: 48px 32px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 36px; }
+h1 { margin: 0; font-size: clamp(2.5rem, 6vw, 5.5rem); line-height: .9; letter-spacing: -.06em; }
+.eyebrow { color: #7ec8a4; text-transform: uppercase; letter-spacing: .16em; font-size: .75rem; font-weight: 700; }
+.subtitle { color: #9ba3b2; max-width: 560px; }
+.updated { color: #6f7888; font-size: .8rem; white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+article { background: linear-gradient(145deg, #1c2028, #171a20); border: 1px solid #2b303a; border-radius: 16px; padding: 22px; box-shadow: 0 18px 45px #0004; }
+.user-heading { display: flex; align-items: center; gap: 14px; padding-bottom: 18px; border-bottom: 1px solid #2a2e37; }
+.avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: #29352f; color: #8ee0b6; font-weight: 800; }
+h2 { margin: 0 0 3px; font-size: 1.1rem; }
+p { margin: 0; }
+.user-heading p, small { color: #929aaa; font-size: .8rem; }
+.machines { display: grid; gap: 13px; padding-top: 17px; }
+.machine { display: flex; align-items: center; gap: 11px; }
+.machine div { display: grid; gap: 2px; }
+.machine strong { font-size: .86rem; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #697180; box-shadow: 0 0 0 4px #69718020; }
+.dot.active { background: #59d08d; box-shadow: 0 0 0 4px #59d08d20; }
+.dot.away { background: #e3b75d; box-shadow: 0 0 0 4px #e3b75d20; }
+.error { border: 1px solid #733b43; background: #3a2025; color: #ffb5bd; padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; }
+.empty, .loading { color: #818999; padding: 48px 0; }
+@media (max-width: 600px) { main { padding: 30px 18px; } header { align-items: flex-start; flex-direction: column; } .grid { grid-template-columns: 1fr; } }
