@@ -43,8 +43,14 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.3.0.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.3.1.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
+
+The Presence web page is registered in AYON's **Settings** frontend scope. AYON
+loads addon frontends from the production bundle, so the bundle containing
+Presence must be set as production before the page appears. Restart AYON Server
+after installing or changing the production addon version, then refresh the
+browser.
 
 Presence requires AYON Core only. It does not require or integrate with ftrack
 or Timers Manager, so neither addon needs to be included in the bundle.

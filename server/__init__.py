@@ -29,7 +29,7 @@ from .settings import DEFAULT_VALUES, PresenceSettings
 
 class PresenceAddon(BaseServerAddon):
     settings_model: Type[PresenceSettings] = PresenceSettings
-    frontend_scopes = {"dashboard": {}}
+    frontend_scopes = {"settings": {}}
 
     def initialize(self) -> None:
         self._scheduler_task = None
