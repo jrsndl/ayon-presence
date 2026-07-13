@@ -1,6 +1,6 @@
 [project]
 name = "ayon-presence"
-version = "0.3.0"
+version = "0.3.1"
 description = "Tray presence and privacy-preserving activity summaries for AYON"
 requires-python = ">=3.9.6"
 
