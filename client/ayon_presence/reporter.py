@@ -147,7 +147,7 @@ class PresenceReporter:
 
     def _send(self, payload: dict[str, Any]) -> None:
         endpoint = f"addons/presence/{__version__}/events"
-        response = ayon_api.post(endpoint, json=payload)
+        response = ayon_api.post(endpoint, **payload)
         response.raise_for_status()
 
     def _run(self) -> None:

@@ -43,7 +43,7 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.3.2.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.3.3.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
 The Presence web page is registered in AYON's **Settings** frontend scope. AYON

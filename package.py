@@ -1,6 +1,6 @@
 name = "presence"
 title = "Presence"
-version = "0.3.2"
+version = "0.3.3"
 
 client_dir = "ayon_presence"
 
