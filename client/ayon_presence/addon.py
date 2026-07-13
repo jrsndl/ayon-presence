@@ -53,6 +53,10 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         self._monitor = ActivityMonitor(self.idle_threshold_seconds, on_state_change)
         self._reporter.attach_monitor(self._monitor)
 
+    def tray_menu(self, tray_menu):
+        """Presence runs silently and does not add a tray menu action."""
+        del tray_menu
+
     def tray_start(self):
         if self._monitor is None or self._reporter is None:
             return
