@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import os
 import platform
 
 from ayon_core.addon import AYONAddon, ITrayAddon
+from ayon_core.lib.events import register_event_callback
 
 from .activity import ActivityMonitor
 from .reporter import PresenceReporter
-from .task_tracking import normalize_task_context
+from .task_tracking import (
+    normalize_ayon_task_context,
+    notify_tray_task_cleared,
+    notify_tray_task_selected,
+)
 from .version import __version__
+
+
+ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class PresenceAddon(AYONAddon, ITrayAddon):
@@ -23,8 +32,6 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         self.task_tracking_enabled = settings.get("task_tracking_enabled", True)
         self._reporter = None
         self._monitor = None
-        self._timers_manager_addon = None
-        self.timers_manager_connector = None
 
         if platform.system().lower() != "windows":
             self.log.warning(
@@ -36,12 +43,12 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         if not self.enabled:
             return
         self._reporter = PresenceReporter(self.heartbeat_seconds, self.log)
-        if self.task_tracking_enabled:
-            self.timers_manager_connector = self
 
         def on_state_change(is_active, idle_seconds, last_input_at):
             event_type = "active" if is_active else "idle"
             self._reporter.enqueue(event_type, idle_seconds, last_input_at)
+            if self.task_tracking_enabled:
+                self._reporter.activity_state_changed(is_active)
 
         self._monitor = ActivityMonitor(self.idle_threshold_seconds, on_state_change)
         self._reporter.attach_monitor(self._monitor)
@@ -58,21 +65,53 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         if self._monitor is not None:
             self._monitor.stop()
 
-    # AYON Timers Manager connector API. ftrack forwards its Timer events to
-    # these methods through Timers Manager.
-    def register_timers_manager(self, timers_manager_addon):
-        self._timers_manager_addon = timers_manager_addon
+    def get_launch_hook_paths(self):
+        """Expose the native AYON application post-launch task hook."""
+        if not self.enabled or not self.task_tracking_enabled:
+            return []
+        return [os.path.join(ADDON_DIR, "launch_hooks")]
 
-    def start_timer(self, data):
-        if self._reporter is None or not self.task_tracking_enabled:
-            return
+    def on_host_install(self, host, host_name, project_name):
+        """Follow native AYON task changes inside a running host."""
+        if self.enabled and self.task_tracking_enabled:
+            register_event_callback("taskChanged", self._on_host_task_change)
+
+    def _on_host_task_change(self, event):
         try:
-            context = normalize_task_context(data)
+            notify_tray_task_selected(event, self.log)
         except (TypeError, ValueError):
-            self.log.warning("Unable to normalize timer task context", exc_info=True)
-            return
-        self._reporter.task_started(context)
+            notify_tray_task_cleared(self.log)
 
-    def stop_timer(self):
+    def webserver_initialization(self, server_manager):
+        """Register local-only endpoints used by AYON launch/host processes."""
+        if not self.enabled or not self.task_tracking_enabled:
+            return
+        server_manager.add_addon_route(
+            self.name, "task/start", "POST", self._start_task_request
+        )
+        server_manager.add_addon_route(
+            self.name, "task/stop", "POST", self._stop_task_request
+        )
+
+    async def _start_task_request(self, request):
+        from aiohttp import web
+
+        try:
+            context = normalize_ayon_task_context(await request.json())
+        except (TypeError, ValueError):
+            return web.json_response(
+                {"success": False, "reason": "invalid_ayon_context"}, status=400
+            )
+        if self._reporter is None:
+            return web.json_response(
+                {"success": False, "reason": "tray_not_ready"}, status=503
+            )
+        self._reporter.task_selected(context)
+        return web.json_response({"success": True})
+
+    async def _stop_task_request(self, _request):
+        from aiohttp import web
+
         if self._reporter is not None:
-            self._reporter.task_stopped()
+            self._reporter.task_cleared()
+        return web.json_response({"success": True})

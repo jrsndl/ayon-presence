@@ -16,8 +16,8 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 - Multi-machine sessions with crash/disconnect timeout handling.
 - Current presence API and embedded AYON web page.
 - Raw events, sessions, durable activity intervals, and daily summaries.
-- Per-user project/folder/task timer intervals received through AYON Timers
-  Manager, including start, end, and total seconds.
+- Per-user project/folder/task active-time intervals from native AYON application
+  launches and in-host task changes, including start, end, and total seconds.
 - Calendar days are always midnight-to-midnight in the configured timezone.
 - Summary processing defaults to 04:00, independently of the day boundary.
 - Active time merges overlapping intervals across a user's machines.
@@ -32,7 +32,7 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Disconnect timeout | 600 seconds |
 | Summary run time | 04:00 |
 | Reporting timezone | Europe/Prague |
-| Task timer tracking | Enabled |
+| Per-task active-time tracking | Enabled |
 | Raw event retention | 30 days |
 
 ## Development
@@ -43,8 +43,11 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.2.0.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.3.0.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
+
+Presence requires AYON Core only. It does not require or integrate with ftrack
+or Timers Manager, so neither addon needs to be included in the bundle.
 
 The server creates these tables in the `public` schema on setup:
 
@@ -74,12 +77,18 @@ authentication.
 | `GET /task-activity?...&user_name=name` | Another user's task time log | Manager |
 | `GET /summaries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Daily summaries | Manager |
 
-## Task timer integration
+## Native AYON task tracking
 
-Presence registers as a passive AYON Timers Manager connector. The ftrack addon
-listens for ftrack `Timer` changes and sends task starts and stops through Timers
-Manager; Presence receives the same normalized notifications. It does not need
-ftrack credentials and does not query ftrack directly.
+Presence uses AYON's own application context. A post-launch hook selects the
+`project_name`, `folder_path`, and `task_name` used to launch a local application.
+When a supported host emits AYON's native `taskChanged` event, Presence switches
+to that new context as well.
+
+Task intervals measure active input time for the most recently selected AYON
+task. When the configured idle threshold is reached, Presence closes the current
+task interval. It opens a new interval for the same task when input activity
+returns. Launching or switching to another AYON task closes the prior interval
+and selects the new one.
 
 Each `presence_task_intervals` record contains:
 
@@ -89,12 +98,17 @@ Each `presence_task_intervals` record contains:
 - `total_seconds`
 - source session/machine and close status for diagnostics
 
-`started_at` is the time the AYON tray observed the timer start. Normal ftrack
-events arrive immediately; if a tray starts while an ftrack timer is already
-running, the first observation time is used because the current ftrack connector
-does not include the original timer timestamp in its Timers Manager payload.
+`started_at` is the time the AYON tray observes the native task selection or
+resumes it after an idle period. `ended_at` is recorded on idle, task switch,
+explicit context clearing, or tray shutdown. A stale interval is also closed by
+the server disconnect timeout after a crash or network loss.
 
 Only one task interval is open per user. Starting a different task closes the
 previous interval. Matching notifications from another tray refresh the existing
-interval, avoiding double-counting when the same ftrack account is observed on
-multiple machines.
+interval, avoiding double-counting when the same AYON user is active on multiple
+machines.
+
+Presence deliberately does not inspect foreground windows, application names,
+workfile names, keystrokes, clicks, or cursor positions. If multiple AYON hosts
+are open, the last native AYON task selection remains selected until another
+launch or `taskChanged` event selects a different task.
