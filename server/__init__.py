@@ -15,7 +15,7 @@ from .database import (
     close_stale_sessions,
     consolidate_day,
     create_schema,
-    current_users,
+    dashboard_data,
     activity_log,
     missing_summary_dates,
     prune_events,
@@ -63,11 +63,14 @@ class PresenceAddon(BaseServerAddon):
     async def get_users(self, user: CurrentUser) -> dict:
         del user
         settings = await self.get_studio_settings()
-        return {
-            "users": await current_users(),
+        result = await dashboard_data(
+            settings.timezone, settings.disconnect_timeout_seconds
+        )
+        result.update({
             "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
             "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
-        }
+        })
+        return result
 
     async def get_summaries(
         self,

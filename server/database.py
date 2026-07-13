@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from ayon_server.lib.postgres import Postgres
 
 from .aggregation import ActivityInterval, summarize_day, utc_day_bounds
+from .dashboard import build_dashboard_rows
 from .models import PresenceEvent
 
 
@@ -354,18 +356,58 @@ async def close_stale_sessions(disconnect_timeout_seconds: int) -> int:
     return len(rows)
 
 
-async def current_users() -> list[dict]:
-    rows = await Postgres.fetch(
+async def dashboard_data(
+    timezone_name: str, disconnect_timeout_seconds: int
+) -> dict[str, list[dict]]:
+    sessions = await Postgres.fetch(
         """
         SELECT DISTINCT ON (user_name, machine_name)
             user_name, machine_name, platform, client_version, state,
-            last_heartbeat_at, last_input_at, idle_seconds
+            last_heartbeat_at, last_input_at, idle_seconds,
+            last_heartbeat_at >= NOW() - ($1 * INTERVAL '1 second')
+                AS is_connected
         FROM public.presence_sessions
         WHERE last_heartbeat_at > NOW() - INTERVAL '30 days'
         ORDER BY user_name, machine_name, last_heartbeat_at DESC
         """,
+        disconnect_timeout_seconds,
     )
-    return [dict(row) for row in rows]
+    latest_tasks = await Postgres.fetch(
+        """
+        SELECT DISTINCT ON (user_name)
+            user_name, project_name, folder_path, task_name,
+            CASE
+                WHEN ended_at IS NULL THEN GREATEST(
+                    total_seconds,
+                    FLOOR(EXTRACT(EPOCH FROM (NOW() - started_at)))::integer
+                )
+                ELSE total_seconds
+            END AS total_seconds
+        FROM public.presence_task_intervals
+        ORDER BY user_name, COALESCE(ended_at, last_seen_at) DESC, started_at DESC
+        """,
+    )
+    local_today = datetime.now(timezone.utc).astimezone(
+        ZoneInfo(timezone_name)
+    ).date()
+    day_start, day_end = utc_day_bounds(local_today, timezone_name)
+    day_starts = await Postgres.fetch(
+        """
+        SELECT user_name,
+            MIN(GREATEST(started_at, $1)) AS day_started_at
+        FROM public.presence_activity_intervals
+        WHERE started_at < $2
+            AND COALESCE(ended_at, last_heartbeat_at) > $1
+        GROUP BY user_name
+        """,
+        day_start,
+        day_end,
+    )
+    return build_dashboard_rows(
+        [dict(row) for row in sessions],
+        [dict(row) for row in latest_tasks],
+        [dict(row) for row in day_starts],
+    )
 
 
 async def consolidate_day(activity_date: date, timezone_name: str) -> None:
