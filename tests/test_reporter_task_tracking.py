@@ -85,3 +85,30 @@ def test_switching_native_context_stops_previous_task_first():
     ]
     assert events[1][1]["task_name"] == "Compositing"
     assert events[2][1]["task_name"] == "Lighting"
+
+
+def test_send_posts_event_fields_at_top_level(monkeypatch):
+    reporter, _events = _reporter()
+    payload = {
+        "event_type": "session_start",
+        "session_id": "session-id",
+        "machine_name": "WORKSTATION",
+    }
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            captured["status_checked"] = True
+
+    def post(endpoint, **kwargs):
+        captured["endpoint"] = endpoint
+        captured["kwargs"] = kwargs
+        return Response()
+
+    monkeypatch.setattr(reporter_module.ayon_api, "post", post, raising=False)
+
+    reporter._send(payload)
+
+    assert captured["endpoint"] == "addons/presence/test/events"
+    assert captured["kwargs"] == payload
+    assert captured["status_checked"] is True
