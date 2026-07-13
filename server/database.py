@@ -58,6 +58,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS presence_one_open_interval_idx
 CREATE INDEX IF NOT EXISTS presence_intervals_range_idx
     ON public.presence_activity_intervals (started_at, ended_at);
 
+CREATE TABLE IF NOT EXISTS public.presence_task_intervals (
+    id BIGSERIAL PRIMARY KEY,
+    user_name TEXT NOT NULL,
+    project_name TEXT NOT NULL,
+    folder_path TEXT NOT NULL,
+    task_name TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at TIMESTAMPTZ,
+    total_seconds INTEGER NOT NULL DEFAULT 0,
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    source_session_id TEXT NOT NULL,
+    source_machine_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    CHECK (ended_at IS NULL OR ended_at >= started_at)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS presence_one_open_task_per_user_idx
+    ON public.presence_task_intervals (user_name) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS presence_task_intervals_range_idx
+    ON public.presence_task_intervals (user_name, started_at, ended_at);
+
 CREATE TABLE IF NOT EXISTS public.presence_daily_activity (
     user_name TEXT NOT NULL,
     activity_date DATE NOT NULL,
@@ -185,7 +205,114 @@ async def record_event(
                 status,
                 now,
             )
+        if event.event_type.startswith("task_"):
+            await _record_task_event(user_name, event, now)
     return now
+
+
+async def _record_task_event(
+    user_name: str, event: PresenceEvent, now: datetime
+) -> None:
+    project_name = event.project_name
+    folder_path = event.folder_path
+    task_name = event.task_name
+    assert project_name and folder_path and task_name
+
+    open_row = await Postgres.fetchrow(
+        """
+        SELECT id, project_name, folder_path, task_name
+        FROM public.presence_task_intervals
+        WHERE user_name = $1 AND ended_at IS NULL
+        FOR UPDATE
+        """,
+        user_name,
+    )
+    context_matches = bool(
+        open_row
+        and open_row["project_name"] == project_name
+        and open_row["folder_path"] == folder_path
+        and open_row["task_name"] == task_name
+    )
+
+    if event.event_type == "task_stop":
+        if context_matches:
+            await _close_task_interval(open_row["id"], now, "closed")
+        return
+
+    if context_matches:
+        await Postgres.execute(
+            """
+            UPDATE public.presence_task_intervals
+            SET last_seen_at = $2,
+                source_session_id = $3,
+                source_machine_name = $4,
+                total_seconds = GREATEST(
+                    0, FLOOR(EXTRACT(EPOCH FROM ($2 - started_at)))::integer
+                )
+            WHERE id = $1
+            """,
+            open_row["id"],
+            now,
+            event.session_id,
+            event.machine_name,
+        )
+        return
+
+    # A heartbeat from a stale second tray must not switch the current task.
+    if event.event_type == "task_heartbeat" and open_row:
+        return
+
+    if open_row:
+        await _close_task_interval(open_row["id"], now, "switched")
+
+    started_at = event.task_started_at or now
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    # Client time is useful for retry recovery, but keep it close to the
+    # authenticated server receipt time to prevent fabricated long intervals.
+    if started_at > now + timedelta(minutes=5) or started_at < now - timedelta(
+        hours=24
+    ):
+        started_at = now
+
+    await Postgres.execute(
+        """
+        INSERT INTO public.presence_task_intervals (
+            user_name, project_name, folder_path, task_name, started_at,
+            last_seen_at, source_session_id, source_machine_name
+        ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
+        """,
+        user_name,
+        project_name,
+        folder_path,
+        task_name,
+        started_at,
+        event.session_id,
+        event.machine_name,
+    )
+
+
+async def _close_task_interval(
+    interval_id: int, ended_at: datetime, status: str
+) -> None:
+    await Postgres.execute(
+        """
+        UPDATE public.presence_task_intervals
+        SET ended_at = GREATEST(started_at, $2),
+            total_seconds = GREATEST(
+                0,
+                FLOOR(EXTRACT(EPOCH FROM (
+                    GREATEST(started_at, $2) - started_at
+                )))::integer
+            ),
+            last_seen_at = GREATEST(last_seen_at, $2),
+            status = $3
+        WHERE id = $1 AND ended_at IS NULL
+        """,
+        interval_id,
+        ended_at,
+        status,
+    )
 
 
 async def close_stale_sessions(disconnect_timeout_seconds: int) -> int:
@@ -209,6 +336,21 @@ async def close_stale_sessions(disconnect_timeout_seconds: int) -> int:
             row["session_id"],
             row["last_heartbeat_at"],
         )
+    await Postgres.execute(
+        """
+        UPDATE public.presence_task_intervals
+        SET ended_at = GREATEST(started_at, last_seen_at),
+            total_seconds = GREATEST(
+                0,
+                FLOOR(EXTRACT(EPOCH FROM (
+                    GREATEST(started_at, last_seen_at) - started_at
+                )))::integer
+            ),
+            status = 'timed_out'
+        WHERE ended_at IS NULL AND last_seen_at < $1
+        """,
+        cutoff,
+    )
     return len(rows)
 
 
@@ -316,6 +458,40 @@ async def activity_log(
         WHERE user_name = $1
             AND started_at < $3
             AND COALESCE(ended_at, last_heartbeat_at) > $2
+        ORDER BY started_at DESC
+        """,
+        user_name,
+        period_start,
+        period_end,
+    )
+    return [dict(row) for row in rows]
+
+
+async def task_activity_log(
+    user_name: str,
+    date_from: date,
+    date_to: date,
+    timezone_name: str,
+) -> list[dict]:
+    period_start, _ = utc_day_bounds(date_from, timezone_name)
+    _, period_end = utc_day_bounds(date_to, timezone_name)
+    rows = await Postgres.fetch(
+        """
+        SELECT id, user_name, project_name, folder_path, task_name,
+            project_name || folder_path || '/' || task_name AS task_path,
+            started_at, ended_at,
+            CASE
+                WHEN ended_at IS NULL THEN GREATEST(
+                    total_seconds,
+                    FLOOR(EXTRACT(EPOCH FROM (last_seen_at - started_at)))::integer
+                )
+                ELSE total_seconds
+            END AS total_seconds,
+            source_machine_name, status
+        FROM public.presence_task_intervals
+        WHERE user_name = $1
+            AND started_at < $3
+            AND COALESCE(ended_at, last_seen_at) > $2
         ORDER BY started_at DESC
         """,
         user_name,

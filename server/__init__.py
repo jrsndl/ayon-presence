@@ -21,6 +21,7 @@ from .database import (
     prune_events,
     record_event,
     summaries,
+    task_activity_log,
 )
 from .models import PresenceEvent
 from .settings import DEFAULT_VALUES, PresenceSettings
@@ -35,6 +36,7 @@ class PresenceAddon(BaseServerAddon):
         self.add_endpoint("events", self.post_event, method="POST")
         self.add_endpoint("users", self.get_users, method="GET")
         self.add_endpoint("activity", self.get_activity, method="GET")
+        self.add_endpoint("task-activity", self.get_task_activity, method="GET")
         self.add_endpoint("summaries", self.get_summaries, method="GET")
 
     async def get_default_settings(self) -> PresenceSettings:
@@ -51,6 +53,8 @@ class PresenceAddon(BaseServerAddon):
         settings = await self.get_studio_settings()
         if not settings.enabled:
             return {"success": False, "reason": "disabled"}
+        if event.event_type.startswith("task_") and not settings.task_tracking_enabled:
+            return {"success": False, "reason": "task_tracking_disabled"}
         received_at = await record_event(
             user.name, event, settings.active_idle_threshold_seconds
         )
@@ -92,6 +96,25 @@ class PresenceAddon(BaseServerAddon):
         settings = await self.get_studio_settings()
         return {
             "activity": await activity_log(
+                requested_user, date_from, date_to, settings.timezone
+            )
+        }
+
+    async def get_task_activity(
+        self,
+        user: CurrentUser,
+        date_from: date = Query(..., alias="from"),
+        date_to: date = Query(..., alias="to"),
+        user_name: str | None = None,
+    ) -> dict:
+        requested_user = user_name or user.name
+        if requested_user != user.name and not user.is_manager:
+            raise ForbiddenException("Users may only view their own task activity")
+        if date_to < date_from or (date_to - date_from).days > 366:
+            return {"task_activity": [], "error": "Invalid date range"}
+        settings = await self.get_studio_settings()
+        return {
+            "task_activity": await task_activity_log(
                 requested_user, date_from, date_to, settings.timezone
             )
         }

@@ -15,6 +15,11 @@ class PresenceSettings(BaseSettingsModel):
     active_idle_threshold_seconds: int = SettingsField(
         300, title="Idle threshold (seconds)", ge=60, le=86400
     )
+    task_tracking_enabled: bool = SettingsField(
+        True,
+        title="Track task timers",
+        description="Record task timer intervals received through Timers Manager.",
+    )
     disconnect_timeout_seconds: int = SettingsField(
         600, title="Disconnect timeout (seconds)", ge=120, le=86400
     )
@@ -46,6 +51,7 @@ DEFAULT_VALUES: dict[str, Any] = {
     "enabled": True,
     "heartbeat_interval_seconds": 300,
     "active_idle_threshold_seconds": 300,
+    "task_tracking_enabled": True,
     "disconnect_timeout_seconds": 600,
     "daily_summary_run_time": "04:00",
     "timezone": "Europe/Prague",

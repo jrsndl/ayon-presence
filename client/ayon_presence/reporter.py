@@ -25,6 +25,8 @@ class PresenceReporter:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._monitor = None
+        self._task_lock = threading.Lock()
+        self._current_task: Optional[dict[str, str]] = None
 
     def attach_monitor(self, monitor: Any) -> None:
         self._monitor = monitor
@@ -49,21 +51,61 @@ class PresenceReporter:
             return
         self.enqueue(event_type, monitor.idle_seconds, monitor.last_input_at)
 
-    def enqueue(
-        self, event_type: str, idle_seconds: int, last_input_at: datetime
-    ) -> None:
-        self._queue.put(
-            {
-                "event_type": event_type,
-                "session_id": self.session_id,
-                "machine_name": self.machine_name,
-                "platform": platform.system().lower(),
-                "client_version": __version__,
-                "client_time": datetime.now(timezone.utc).isoformat(),
-                "last_input_at": last_input_at.isoformat(),
-                "idle_seconds": max(0, idle_seconds),
-            }
+    def task_started(self, context: dict[str, str]) -> None:
+        with self._task_lock:
+            if self._current_task and all(
+                self._current_task.get(key) == value for key, value in context.items()
+            ):
+                return
+            stored_context = dict(context)
+            stored_context["task_started_at"] = datetime.now(timezone.utc).isoformat()
+            self._current_task = stored_context
+        self._enqueue_task_event("task_start", stored_context)
+
+    def task_stopped(self) -> None:
+        with self._task_lock:
+            context = self._current_task
+            self._current_task = None
+        if context is not None:
+            self._enqueue_task_event("task_stop", context)
+
+    def _enqueue_task_heartbeat(self) -> None:
+        with self._task_lock:
+            context = self._current_task
+        if context is not None:
+            self._enqueue_task_event("task_heartbeat", context)
+
+    def _enqueue_task_event(self, event_type: str, context: dict[str, str]) -> None:
+        monitor = self._monitor
+        if monitor is None:
+            return
+        self.enqueue(
+            event_type,
+            monitor.idle_seconds,
+            monitor.last_input_at,
+            extra=context,
         )
+
+    def enqueue(
+        self,
+        event_type: str,
+        idle_seconds: int,
+        last_input_at: datetime,
+        extra: Optional[dict[str, str]] = None,
+    ) -> None:
+        payload = {
+            "event_type": event_type,
+            "session_id": self.session_id,
+            "machine_name": self.machine_name,
+            "platform": platform.system().lower(),
+            "client_version": __version__,
+            "client_time": datetime.now(timezone.utc).isoformat(),
+            "last_input_at": last_input_at.isoformat(),
+            "idle_seconds": max(0, idle_seconds),
+        }
+        if extra:
+            payload.update(extra)
+        self._queue.put(payload)
 
     def _send(self, payload: dict[str, Any]) -> None:
         endpoint = f"addons/presence/{__version__}/events"
@@ -76,6 +118,7 @@ class PresenceReporter:
                 payload = self._queue.get(timeout=self.heartbeat_seconds)
             except queue.Empty:
                 self.enqueue_current("heartbeat")
+                self._enqueue_task_heartbeat()
                 continue
             if payload is None:
                 return
