@@ -1,0 +1,6 @@
+[project]
+name = "presence"
+description = "AYON Presence tray client"
+
+[ayon.runtimeDependencies]
+pynput = "^1.7.2"
