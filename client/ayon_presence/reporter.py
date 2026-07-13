@@ -15,6 +15,9 @@ import ayon_api
 from .version import __version__
 
 
+TASK_IDENTITY_KEYS = ("project_name", "folder_path", "task_name")
+
+
 class PresenceReporter:
     def __init__(self, heartbeat_seconds: int, log: Any) -> None:
         self.heartbeat_seconds = heartbeat_seconds
@@ -57,21 +60,27 @@ class PresenceReporter:
         """Select the native AYON context and track it while the user is active."""
         stop_context = None
         start_context = None
+        update_context = None
         with self._task_lock:
             self._selected_task = dict(context)
             if self._current_task and all(
-                self._current_task.get(key) == value for key, value in context.items()
+                self._current_task.get(key) == context.get(key)
+                for key in TASK_IDENTITY_KEYS
             ):
-                return
-            stop_context = self._current_task
-            self._current_task = None
-            if self._is_user_active():
-                start_context = self._new_task_interval(context)
-                self._current_task = start_context
+                self._current_task.update(context)
+                update_context = dict(self._current_task)
+            else:
+                stop_context = self._current_task
+                self._current_task = None
+                if self._is_user_active():
+                    start_context = self._new_task_interval(context)
+                    self._current_task = start_context
         if stop_context is not None:
             self._enqueue_task_event("task_stop", stop_context)
         if start_context is not None:
             self._enqueue_task_event("task_start", start_context)
+        if update_context is not None:
+            self._enqueue_task_event("task_heartbeat", update_context)
 
     def task_cleared(self) -> None:
         with self._task_lock:

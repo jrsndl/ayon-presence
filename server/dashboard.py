@@ -21,11 +21,16 @@ def build_dashboard_rows(
     sessions: Iterable[Mapping[str, Any]],
     latest_tasks: Iterable[Mapping[str, Any]],
     day_starts: Iterable[Mapping[str, Any]],
+    latest_machine_contexts: Iterable[Mapping[str, Any]] = (),
 ) -> dict[str, list[dict[str, Any]]]:
     """Build deterministic user-centric and computer-centric rows."""
     task_by_user = {str(row["user_name"]): dict(row) for row in latest_tasks}
     day_start_by_user = {
         str(row["user_name"]): row.get("day_started_at") for row in day_starts
+    }
+    dcc_by_computer = {
+        str(row["source_machine_name"]): _format_dcc(row)
+        for row in latest_machine_contexts
     }
     by_user: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     by_computer: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
@@ -61,6 +66,8 @@ def build_dashboard_rows(
                 "last_folder": task.get("folder_path"),
                 "last_task": task.get("task_name"),
                 "last_task_seconds": task.get("total_seconds"),
+                "dcc": _format_dcc(task),
+                "workfile": task.get("workfile_name"),
                 "day_started_at": day_start_by_user.get(user_name),
             }
         )
@@ -73,7 +80,16 @@ def build_dashboard_rows(
                 "computer_name": computer_name,
                 "last_user": str(latest["user_name"]),
                 "last_active_at": _last_active(latest),
+                "dcc": dcc_by_computer.get(computer_name),
             }
         )
 
     return {"users": user_rows, "computers": computer_rows}
+
+
+def _format_dcc(context: Mapping[str, Any]) -> Optional[str]:
+    name = context.get("dcc_name")
+    version = context.get("dcc_version")
+    if name and version:
+        return f"{name} {version}"
+    return str(name or version) if name or version else None

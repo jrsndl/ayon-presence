@@ -6,6 +6,9 @@ import os
 from typing import Any
 
 
+OPTIONAL_CONTEXT_KEYS = ("dcc_name", "dcc_version", "workfile_name")
+
+
 def normalize_ayon_task_context(data: dict[str, Any]) -> dict[str, str]:
     """Validate and normalize a native AYON project/folder/task context."""
     if not isinstance(data, dict):
@@ -22,11 +25,41 @@ def normalize_ayon_task_context(data: dict[str, Any]) -> dict[str, str]:
     if not project_name or not task_name or folder_path == "/":
         raise ValueError("AYON context must contain project, folder and task")
 
-    return {
+    context = {
         "project_name": project_name,
         "folder_path": folder_path,
         "task_name": task_name,
     }
+    for key in OPTIONAL_CONTEXT_KEYS:
+        value = str(data.get(key) or "").strip()
+        if value:
+            context[key] = value
+    return context
+
+
+def host_metadata(host: Any) -> dict[str, str]:
+    """Collect portable application metadata without exposing full paths."""
+    result: dict[str, str] = {}
+    try:
+        app_info = host.get_app_information()
+        if app_info.app_name:
+            result["dcc_name"] = str(app_info.app_name)
+        if app_info.app_version:
+            result["dcc_version"] = str(app_info.app_version)
+    except Exception:
+        pass
+
+    if hasattr(host, "get_current_workfile"):
+        try:
+            workfile_path = host.get_current_workfile()
+        except Exception:
+            workfile_path = None
+        result["workfile_name"] = (
+            os.path.basename(workfile_path.replace("\\", "/"))
+            if workfile_path
+            else "Untitled"
+        )
+    return result
 
 
 def notify_tray_task_selected(data: dict[str, Any], logger: Any = None) -> None:

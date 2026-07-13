@@ -98,6 +98,8 @@ const userColumns = [
     sortValue: (row) => row.other_computers.join(', '),
     render: (row) => row.other_computers.length ? row.other_computers.join(', ') : '—',
   },
+  { key: 'dcc', label: 'DCC' },
+  { key: 'workfile', label: 'Workfile' },
   { key: 'last_active_at', label: 'Last Active', render: (row) => relativeTime(row.last_active_at) },
   { key: 'last_project', label: 'Last Project' },
   { key: 'last_folder', label: 'Last Folder' },
@@ -109,6 +111,7 @@ const userColumns = [
 const computerColumns = [
   { key: 'computer_name', label: 'Computer Name' },
   { key: 'last_user', label: 'Last User' },
+  { key: 'dcc', label: 'DCC' },
   { key: 'last_active_at', label: 'Last Active', render: (row) => relativeTime(row.last_active_at) },
 ]
 
@@ -116,6 +119,7 @@ export default function App() {
   const [data, setData] = useState({ users: [], computers: [] })
   const [error, setError] = useState('')
   const [updatedAt, setUpdatedAt] = useState(null)
+  const [activeTab, setActiveTab] = useState('users')
 
   useEffect(() => {
     let cancelled = false
@@ -145,12 +149,20 @@ export default function App() {
       <span className="updated">Updated {updatedAt ? relativeTime(updatedAt) : '…'}</span>
     </header>
     {error && <div className="error">Could not refresh presence: {error}</div>}
-    <div className="sections">
-      <section className="panel users-panel">
+    <div className="tabs" role="tablist" aria-label="Presence views">
+      <button type="button" role="tab" aria-selected={activeTab === 'users'} onClick={() => setActiveTab('users')}>
+        Users <span>{data.users.length}</span>
+      </button>
+      <button type="button" role="tab" aria-selected={activeTab === 'computers'} onClick={() => setActiveTab('computers')}>
+        Computers <span>{data.computers.length}</span>
+      </button>
+    </div>
+    <div className="tab-content">
+      <section className="panel users-panel" role="tabpanel" hidden={activeTab !== 'users'}>
         <div className="section-heading"><div><p className="section-label">Users</p><h2>User activity</h2></div><span>{data.users.length} users</span></div>
         <SortableTable columns={userColumns} rows={data.users} initialSort="user_name" emptyMessage="No tray sessions have reported yet." />
       </section>
-      <section className="panel computers-panel">
+      <section className="panel computers-panel" role="tabpanel" hidden={activeTab !== 'computers'}>
         <div className="section-heading"><div><p className="section-label">Computers</p><h2>Computer activity</h2></div><span>{data.computers.length} computers</span></div>
         <SortableTable columns={computerColumns} rows={data.computers} initialSort="computer_name" emptyMessage="No computers have reported yet." />
       </section>

@@ -79,6 +79,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS presence_one_open_task_per_user_idx
     ON public.presence_task_intervals (user_name) WHERE ended_at IS NULL;
 CREATE INDEX IF NOT EXISTS presence_task_intervals_range_idx
     ON public.presence_task_intervals (user_name, started_at, ended_at);
+ALTER TABLE public.presence_task_intervals
+    ADD COLUMN IF NOT EXISTS dcc_name TEXT;
+ALTER TABLE public.presence_task_intervals
+    ADD COLUMN IF NOT EXISTS dcc_version TEXT;
+ALTER TABLE public.presence_task_intervals
+    ADD COLUMN IF NOT EXISTS workfile_name TEXT;
 
 CREATE TABLE IF NOT EXISTS public.presence_daily_activity (
     user_name TEXT NOT NULL,
@@ -248,6 +254,9 @@ async def _record_task_event(
             SET last_seen_at = $2,
                 source_session_id = $3,
                 source_machine_name = $4,
+                dcc_name = COALESCE($5, dcc_name),
+                dcc_version = COALESCE($6, dcc_version),
+                workfile_name = COALESCE($7, workfile_name),
                 total_seconds = GREATEST(
                     0, FLOOR(EXTRACT(EPOCH FROM ($2 - started_at)))::integer
                 )
@@ -257,6 +266,9 @@ async def _record_task_event(
             now,
             event.session_id,
             event.machine_name,
+            event.dcc_name,
+            event.dcc_version,
+            event.workfile_name,
         )
         return
 
@@ -281,8 +293,9 @@ async def _record_task_event(
         """
         INSERT INTO public.presence_task_intervals (
             user_name, project_name, folder_path, task_name, started_at,
-            last_seen_at, source_session_id, source_machine_name
-        ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
+            last_seen_at, source_session_id, source_machine_name,
+            dcc_name, dcc_version, workfile_name
+        ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10)
         """,
         user_name,
         project_name,
@@ -291,6 +304,9 @@ async def _record_task_event(
         started_at,
         event.session_id,
         event.machine_name,
+        event.dcc_name,
+        event.dcc_version,
+        event.workfile_name,
     )
 
 
@@ -376,6 +392,7 @@ async def dashboard_data(
         """
         SELECT DISTINCT ON (user_name)
             user_name, project_name, folder_path, task_name,
+            dcc_name, dcc_version, workfile_name,
             CASE
                 WHEN ended_at IS NULL THEN GREATEST(
                     total_seconds,
@@ -385,6 +402,15 @@ async def dashboard_data(
             END AS total_seconds
         FROM public.presence_task_intervals
         ORDER BY user_name, COALESCE(ended_at, last_seen_at) DESC, started_at DESC
+        """,
+    )
+    latest_machine_contexts = await Postgres.fetch(
+        """
+        SELECT DISTINCT ON (source_machine_name)
+            source_machine_name, dcc_name, dcc_version
+        FROM public.presence_task_intervals
+        WHERE dcc_name IS NOT NULL
+        ORDER BY source_machine_name, last_seen_at DESC, started_at DESC
         """,
     )
     local_today = datetime.now(timezone.utc).astimezone(
@@ -407,6 +433,7 @@ async def dashboard_data(
         [dict(row) for row in sessions],
         [dict(row) for row in latest_tasks],
         [dict(row) for row in day_starts],
+        [dict(row) for row in latest_machine_contexts],
     )
 
 

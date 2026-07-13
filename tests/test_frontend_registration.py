@@ -19,3 +19,12 @@ def test_presence_uses_supported_settings_frontend_scope():
                 return
 
     raise AssertionError("PresenceAddon.frontend_scopes is not declared")
+
+
+def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
+    source = Path("frontend/src/App.jsx").read_text(encoding="utf-8")
+
+    assert "useState('users')" in source
+    assert 'role="tablist"' in source
+    assert source.count("label: 'DCC'") == 2
+    assert "label: 'Workfile'" in source
