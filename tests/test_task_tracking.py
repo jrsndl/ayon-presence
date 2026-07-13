@@ -14,24 +14,8 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(task_tracking)
 
 
-def test_normalizes_ftrack_timer_payload():
-    context = task_tracking.normalize_task_context(
-        {
-            "project_name": "Demo",
-            "hierarchy": ["shots", "sq01", "sh010"],
-            "task_name": "Compositing",
-            "task_type": "Comp",
-        }
-    )
-    assert context == {
-        "project_name": "Demo",
-        "folder_path": "/shots/sq01/sh010",
-        "task_name": "Compositing",
-    }
-
-
-def test_preserves_native_ayon_folder_path():
-    context = task_tracking.normalize_task_context(
+def test_normalizes_native_ayon_folder_path():
+    context = task_tracking.normalize_ayon_task_context(
         {
             "project_name": "Demo",
             "folder_path": "assets/CharacterA",
@@ -41,8 +25,13 @@ def test_preserves_native_ayon_folder_path():
     assert context["folder_path"] == "/assets/CharacterA"
 
 
-def test_rejects_incomplete_timer_payload():
+def test_rejects_incomplete_ayon_context():
     with pytest.raises(ValueError):
-        task_tracking.normalize_task_context(
+        task_tracking.normalize_ayon_task_context(
             {"project_name": "Demo", "task_name": "Comp"}
         )
+
+
+def test_rejects_non_dictionary_context():
+    with pytest.raises(TypeError):
+        task_tracking.normalize_ayon_task_context(None)

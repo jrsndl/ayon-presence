@@ -17,8 +17,11 @@ class PresenceSettings(BaseSettingsModel):
     )
     task_tracking_enabled: bool = SettingsField(
         True,
-        title="Track task timers",
-        description="Record task timer intervals received through Timers Manager.",
+        title="Track active time per AYON task",
+        description=(
+            "Record active intervals for the native AYON project/folder/task "
+            "context selected by application launches and host task changes."
+        ),
     )
     disconnect_timeout_seconds: int = SettingsField(
         600, title="Disconnect timeout (seconds)", ge=120, le=86400
