@@ -27,6 +27,27 @@ def test_event_model_is_compatible_with_ayon_pydantic():
     assert pydantic.VERSION.startswith("1.")
 
 
+def test_task_events_require_full_context():
+    models = load_module("presence_task_models", "server/models.py")
+    event = models.PresenceEvent(
+        event_type="task_start",
+        session_id="session-1",
+        machine_name="WS-01",
+        project_name="Demo",
+        folder_path="/shots/010",
+        task_name="Compositing",
+        task_started_at="2026-07-13T08:00:00Z",
+    )
+    assert event.task_name == "Compositing"
+    assert event.task_started_at is not None
+    with pytest.raises(pydantic.ValidationError):
+        models.PresenceEvent(
+            event_type="task_start",
+            session_id="session-1",
+            machine_name="WS-01",
+        )
+
+
 def test_settings_validate_run_time_and_timezone(monkeypatch):
     settings_module = ModuleType("ayon_server.settings")
     settings_module.BaseSettingsModel = pydantic.BaseModel
@@ -38,6 +59,7 @@ def test_settings_validate_run_time_and_timezone(monkeypatch):
     settings = load_module("presence_settings", "server/settings.py")
 
     assert settings.PresenceSettings().daily_summary_run_time == "04:00"
+    assert settings.PresenceSettings().task_tracking_enabled is True
     with pytest.raises(pydantic.ValidationError):
         settings.PresenceSettings(daily_summary_run_time="25:00")
     with pytest.raises(pydantic.ValidationError):
