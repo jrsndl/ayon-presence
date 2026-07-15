@@ -114,3 +114,11 @@ def test_schema_upgrades_are_ensured_before_heartbeat_and_timelog_requests():
     assert "Unable to load Presence TimeLog" in frontend
     assert "requestErrorMessage" in frontend
     assert ">Retry</button>" in frontend
+
+
+def test_timelog_uses_postgres_apis_available_in_ayon_1_6():
+    database = Path("server/timelog.py").read_text(encoding="utf-8")
+
+    assert "Postgres.fetchval" not in database
+    assert "async def latest_tray_timezone" in database
+    assert 'return str(row["tray_timezone"]) if row else None' in database
