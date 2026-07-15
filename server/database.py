@@ -581,7 +581,8 @@ async def project_time_summary(
     rows = await Postgres.fetch(
         """
         SELECT project_name,
-            COUNT(DISTINCT user_name)::integer AS users,
+            ARRAY_AGG(DISTINCT user_name ORDER BY user_name) AS users,
+            COUNT(DISTINCT user_name)::integer AS user_count,
             GREATEST(
                 0,
                 FLOOR(SUM(EXTRACT(EPOCH FROM (

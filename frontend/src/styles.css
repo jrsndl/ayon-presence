@@ -24,6 +24,10 @@ table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 
 .users-panel table { min-width: 1280px; }
 .computers-panel table { min-width: 640px; }
 .projects-panel table { min-width: 560px; }
+.projects-panel th:nth-child(1) { width: 20%; }
+.projects-panel th:nth-child(2) { width: 50%; }
+.projects-panel th:nth-child(3) { width: 12%; }
+.projects-panel th:nth-child(4) { width: 18%; }
 th { padding: 0; text-align: left; background: #14171d; border-bottom: 1px solid #303640; border-right: 1px solid #282e37; white-space: nowrap; }
 th:last-child, td:last-child { border-right: 0; }
 th button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border: 0; color: #b9c2cf; background: transparent; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }

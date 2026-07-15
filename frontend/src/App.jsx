@@ -117,7 +117,13 @@ const computerColumns = [
 
 const projectColumns = [
   { key: 'project_name', label: 'Project' },
-  { key: 'users', label: 'Users' },
+  {
+    key: 'users',
+    label: 'Users',
+    sortValue: (row) => row.users.join(', '),
+    render: (row) => row.users.join(', '),
+  },
+  { key: 'user_count', label: 'User #' },
   { key: 'total_seconds', label: 'Time logged', render: (row) => duration(row.total_seconds) },
 ]
 
