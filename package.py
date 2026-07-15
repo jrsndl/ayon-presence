@@ -1,5 +1,5 @@
 name = "presence"
-title = "Presence"
+title = "Presence TimeLog"
 version = "0.6.2"
 
 client_dir = "ayon_presence"

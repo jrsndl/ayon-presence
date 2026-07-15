@@ -19,6 +19,11 @@ events, turns them into activity intervals, and creates calendar-day summaries.
   usernames in client payloads.
 - Multi-machine sessions with crash/disconnect timeout handling.
 - Current presence API and embedded AYON web page.
+- Artist-facing **Presence TimeLog** dashboard beside AYON Tasks, with shared
+  Tracker, Timesheet, and Calendar views over activity, automatic tasks, and
+  artist-edited logs.
+- Connected editable copies preserve automatic task records while supporting
+  submission, manager review, disputes, rejection, and optional automation.
 - Sortable user, computer, and project activity subtabs with DCC, workfile,
   date-range, and project-time context.
 - Optional manager-only raw Events debug tab with cursor-based lazy loading.
@@ -51,6 +56,12 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Raw event retention | 90 days |
 | Raw events debug view | Enabled |
 | Projects calendar week start | Monday |
+| Presence TimeLog | Enabled |
+| Automatic TimeLog submission | Disabled (24-hour delay when enabled) |
+| Automatic TimeLog approval | Disabled (7-day delay when enabled) |
+| Default artist start hour | 09:00 |
+| Assigned tasks only | Enabled |
+| Task bid-hours attribute | `bidHours` |
 
 ## Development
 
@@ -63,11 +74,12 @@ The package command builds `frontend/` with npm when Node is available and
 creates `package/presence-0.6.2.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
-The Presence web page is registered in AYON's **Settings** frontend scope. AYON
-loads addon frontends from the production bundle, so the bundle containing
-Presence must be set as production before the page appears. Restart AYON Server
-after installing or changing the production addon version, then refresh the
-browser.
+The studio Presence page is registered in AYON's **Settings** frontend scope.
+The artist-facing **Presence TimeLog** page uses AYON's **Dashboard** scope and
+appears beside Tasks and Projects. AYON loads addon frontends from the production
+bundle, so the bundle containing Presence must be set as production before either
+page appears. Restart AYON Server after installing or changing the production
+addon version, then refresh the browser.
 
 Presence requires AYON Core only. It does not require or integrate with ftrack
 or Timers Manager, so neither addon needs to be included in the bundle.
@@ -96,6 +108,27 @@ summary processing repairs historical boundaries from retained activity data;
 when activity crosses a calendar boundary, the earlier day ends exactly at local
 midnight.
 
+## Artist TimeLog
+
+Automatic `presence_task_intervals` are never edited. When TimeLog data is read,
+Presence creates a connected copy in `presence_timelogs`. That copy follows its
+source while it remains untouched and not submitted; the first artist edit,
+manual stop, or submission detaches it from automatic synchronization while
+retaining `source_task_interval_id` for traceability.
+
+Artists can create, edit, duplicate, merge, delete, and submit only their own
+editable or disputed records. Submitted, approved, and rejected records are
+immutable to artists. Managers and admins may view all users and approve,
+dispute, or reject submitted entries, but the API does not let them edit another
+artist's record. Rejected records remain final; disputed records return to the
+artist's editable workflow.
+
+Timestamps are stored as PostgreSQL `TIMESTAMPTZ` values and can be displayed in
+studio, latest tray, or artist-preference timezones. The tray advertises its best
+available IANA timezone identifier without an additional dependency. Artist
+preferences also contain the default start hour and whether the task picker is
+limited to assigned AYON tasks.
+
 The server creates these tables in the `public` schema on setup:
 
 - `presence_sessions`
@@ -104,6 +137,8 @@ The server creates these tables in the `public` schema on setup:
 - `presence_activity_intervals`
 - `presence_day_boundaries`
 - `presence_task_intervals`
+- `presence_timelogs`
+- `presence_timelog_preferences`
 - `presence_daily_activity`
 - `presence_summary_runs`
 
@@ -127,6 +162,15 @@ authentication.
 | `GET /project-time?from=YYYY-MM-DD&to=YYYY-MM-DD` | Project task-time totals | Manager |
 | `GET /raw-events?page_size=50&before_id=123` | Cursor-paginated raw events | Manager |
 | `GET /summaries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Daily summaries | Manager |
+| `GET /timelog/context` | Timezones, preferences, permissions, and workflow settings | Authenticated user |
+| `GET /timelog/data?from=YYYY-MM-DD&to=YYYY-MM-DD` | Own three TimeLog layers | Authenticated user |
+| `GET /timelog/data?...&user_name=name` | Another artist's three layers | Manager |
+| `POST /timelog/entries` | Create or start own TimeLog | Authenticated user |
+| `PATCH /timelog/entries/{id}` | Edit own editable/disputed TimeLog | Owner |
+| `POST /timelog/delete`, `/duplicate/{id}`, `/submit`, `/merge` | Own TimeLog actions | Owner |
+| `POST /timelog/review` | Approve, dispute, or reject submitted TimeLogs | Manager |
+| `PUT /timelog/preferences` | Save artist timezone and entry preferences | Authenticated user |
+| `POST /timelog/timer/stop` | Stop own current TimeLog and linked auto interval | Owner |
 
 ## Native AYON task tracking
 
