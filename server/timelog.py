@@ -159,7 +159,7 @@ async def timelog_users() -> list[str]:
 
 
 async def latest_tray_timezone(user_name: str) -> str | None:
-    return await Postgres.fetchval(
+    row = await Postgres.fetchrow(
         """
         SELECT tray_timezone
         FROM public.presence_sessions
@@ -169,6 +169,7 @@ async def latest_tray_timezone(user_name: str) -> str | None:
         """,
         user_name,
     )
+    return str(row["tray_timezone"]) if row else None
 
 
 async def task_totals() -> list[dict[str, Any]]:
@@ -282,16 +283,19 @@ async def running_timelog(user_name: str) -> dict[str, Any] | None:
 
 async def create_timelog(user_name: str, payload: TimeLogCreate) -> dict[str, Any]:
     _validate_range(payload.started_at, payload.ended_at)
-    if payload.ended_at is None and await Postgres.fetchval(
-        """
-        SELECT EXISTS (
-            SELECT 1 FROM public.presence_timelogs
+    if payload.ended_at is None:
+        running = await Postgres.fetchrow(
+            """
+            SELECT id FROM public.presence_timelogs
             WHERE user_name = $1 AND ended_at IS NULL AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            user_name,
         )
-        """,
-        user_name,
-    ):
-        raise BadRequestException("Stop the current TimeLog before starting another")
+        if running:
+            raise BadRequestException(
+                "Stop the current TimeLog before starting another"
+            )
     row = await Postgres.fetchrow(
         """
         INSERT INTO public.presence_timelogs (
