@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ayon_server.settings import BaseSettingsModel, SettingsField
@@ -40,6 +40,21 @@ class PresenceSettings(BaseSettingsModel):
     raw_event_retention_days: int = SettingsField(
         30, title="Raw event retention (days)", ge=1, le=3650
     )
+    projects_default_date_range: Literal[
+        "today",
+        "yesterday",
+        "this_week",
+        "last_week",
+        "this_month",
+        "last_month",
+        "this_year",
+        "last_year",
+        "custom",
+    ] = SettingsField(
+        "this_week",
+        title="Projects default date range",
+        description="Initial date preset shown on the Presence Projects tab.",
+    )
 
     @validator("timezone")
     def validate_timezone(cls, value: str) -> str:
@@ -59,4 +74,5 @@ DEFAULT_VALUES: dict[str, Any] = {
     "daily_summary_run_time": "04:00",
     "timezone": "Europe/Prague",
     "raw_event_retention_days": 30,
+    "projects_default_date_range": "this_week",
 }

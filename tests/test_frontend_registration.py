@@ -30,6 +30,28 @@ def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
     assert "label: 'Workfile'" in source
 
 
+def test_dashboard_exposes_projects_report_and_date_controls():
+    source = Path("frontend/src/App.jsx").read_text(encoding="utf-8")
+
+    assert "Projects <span>{projects.length}</span>" in source
+    assert "label: 'Project'" in source
+    assert "label: 'Users'" in source
+    assert "label: 'Time logged'" in source
+    assert "type=\"date\"" in source
+    assert "['this_week', 'This Week']" in source
+    assert "axios.get('/project-time'" in source
+
+
+def test_projects_default_date_range_is_configurable():
+    settings = Path("server/settings.py").read_text(encoding="utf-8")
+    server = Path("server/__init__.py").read_text(encoding="utf-8")
+
+    assert 'projects_default_date_range: Literal[' in settings
+    assert '"projects_default_date_range": "this_week"' in settings
+    assert 'self.add_endpoint("project-time"' in server
+    assert '"projects_default_date_range": settings.projects_default_date_range' in server
+
+
 def test_dashboard_is_square_edged_and_uses_available_width():
     styles = Path("frontend/src/styles.css").read_text(encoding="utf-8")
 
