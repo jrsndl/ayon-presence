@@ -28,3 +28,12 @@ def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
     assert 'role="tablist"' in source
     assert source.count("label: 'DCC'") == 2
     assert "label: 'Workfile'" in source
+
+
+def test_dashboard_is_square_edged_and_uses_available_width():
+    styles = Path("frontend/src/styles.css").read_text(encoding="utf-8")
+
+    assert "border-radius: 0 !important" in styles
+    assert "main { width: 100%; max-width: none" in styles
+    assert ".users-panel table { min-width: 1280px; }" in styles
+    assert "td { min-width: 0;" in styles
