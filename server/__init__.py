@@ -18,6 +18,7 @@ from .database import (
     dashboard_data,
     activity_log,
     missing_summary_dates,
+    project_time_summary,
     prune_events,
     record_event,
     summaries,
@@ -37,6 +38,7 @@ class PresenceAddon(BaseServerAddon):
         self.add_endpoint("users", self.get_users, method="GET")
         self.add_endpoint("activity", self.get_activity, method="GET")
         self.add_endpoint("task-activity", self.get_task_activity, method="GET")
+        self.add_endpoint("project-time", self.get_project_time, method="GET")
         self.add_endpoint("summaries", self.get_summaries, method="GET")
 
     async def get_default_settings(self) -> PresenceSettings:
@@ -69,8 +71,26 @@ class PresenceAddon(BaseServerAddon):
         result.update({
             "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
             "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
+            "projects_default_date_range": settings.projects_default_date_range,
         })
         return result
+
+    async def get_project_time(
+        self,
+        user: CurrentUser,
+        date_from: date = Query(..., alias="from"),
+        date_to: date = Query(..., alias="to"),
+    ) -> dict:
+        if not user.is_manager:
+            raise ForbiddenException("Project time reports require manager access")
+        if date_to < date_from or (date_to - date_from).days > 366:
+            return {"projects": [], "error": "Invalid date range"}
+        settings = await self.get_studio_settings()
+        return {
+            "projects": await project_time_summary(
+                date_from, date_to, settings.timezone
+            )
+        }
 
     async def get_summaries(
         self,

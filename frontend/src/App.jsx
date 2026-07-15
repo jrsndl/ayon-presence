@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 function plural(value, unit) {
   return `${value} ${unit}${value === 1 ? '' : 's'} ago`
@@ -115,11 +115,99 @@ const computerColumns = [
   { key: 'last_active_at', label: 'Last Active', render: (row) => relativeTime(row.last_active_at) },
 ]
 
+const projectColumns = [
+  { key: 'project_name', label: 'Project' },
+  { key: 'users', label: 'Users' },
+  { key: 'total_seconds', label: 'Time logged', render: (row) => duration(row.total_seconds) },
+]
+
+const presets = [
+  ['today', 'Today'],
+  ['yesterday', 'Yesterday'],
+  ['this_week', 'This Week'],
+  ['last_week', 'Last Week'],
+  ['this_month', 'This Month'],
+  ['last_month', 'Last Month'],
+  ['this_year', 'This Year'],
+  ['last_year', 'Last Year'],
+  ['custom', 'Custom'],
+]
+
+function dateOnly(year, month, day) {
+  return new Date(year, month, day, 12)
+}
+
+function addDays(value, amount) {
+  return dateOnly(value.getFullYear(), value.getMonth(), value.getDate() + amount)
+}
+
+function isoDate(value) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDate(value) {
+  const [year, month, day] = value.split('-').map(Number)
+  return dateOnly(year, month - 1, day)
+}
+
+function presetRange(preset, now = new Date()) {
+  const today = dateOnly(now.getFullYear(), now.getMonth(), now.getDate())
+  const mondayOffset = (today.getDay() + 6) % 7
+  const thisMonday = addDays(today, -mondayOffset)
+  if (preset === 'today' || preset === 'custom') return { start: today, end: today }
+  if (preset === 'yesterday') {
+    const yesterday = addDays(today, -1)
+    return { start: yesterday, end: yesterday }
+  }
+  if (preset === 'this_week') return { start: thisMonday, end: addDays(thisMonday, 6) }
+  if (preset === 'last_week') return { start: addDays(thisMonday, -7), end: addDays(thisMonday, -1) }
+  if (preset === 'this_month') return {
+    start: dateOnly(today.getFullYear(), today.getMonth(), 1),
+    end: dateOnly(today.getFullYear(), today.getMonth() + 1, 0),
+  }
+  if (preset === 'last_month') return {
+    start: dateOnly(today.getFullYear(), today.getMonth() - 1, 1),
+    end: dateOnly(today.getFullYear(), today.getMonth(), 0),
+  }
+  if (preset === 'this_year') return {
+    start: dateOnly(today.getFullYear(), 0, 1),
+    end: dateOnly(today.getFullYear(), 11, 31),
+  }
+  return {
+    start: dateOnly(today.getFullYear() - 1, 0, 1),
+    end: dateOnly(today.getFullYear() - 1, 11, 31),
+  }
+}
+
+function DateWidget({ label, value, onChange }) {
+  const display = value.toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })
+  return <div className="date-field">
+    <span className="sr-only">{label}</span>
+    <button type="button" className="date-arrow" aria-label={`Previous ${label.toLowerCase()}`} onClick={() => onChange(addDays(value, -1))}>‹</button>
+    <label className="date-value">
+      <span>{display}</span>
+      <input type="date" aria-label={label} value={isoDate(value)} onChange={(event) => onChange(parseDate(event.target.value))} />
+    </label>
+    <button type="button" className="date-arrow" aria-label={`Next ${label.toLowerCase()}`} onClick={() => onChange(addDays(value, 1))}>›</button>
+  </div>
+}
+
 export default function App() {
   const [data, setData] = useState({ users: [], computers: [] })
+  const [projects, setProjects] = useState([])
   const [error, setError] = useState('')
+  const [projectError, setProjectError] = useState('')
+  const [projectsLoading, setProjectsLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const [activeTab, setActiveTab] = useState('users')
+  const [preset, setPreset] = useState('this_week')
+  const [range, setRange] = useState(() => presetRange('this_week'))
+  const initializedPreset = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -128,6 +216,12 @@ export default function App() {
         const response = await axios.get('/users')
         if (!cancelled) {
           setData(response.data)
+          if (!initializedPreset.current) {
+            const configured = response.data.projects_default_date_range || 'this_week'
+            setPreset(configured)
+            setRange(presetRange(configured))
+            initializedPreset.current = true
+          }
           setUpdatedAt(new Date())
           setError('')
         }
@@ -143,9 +237,47 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (activeTab !== 'projects') return undefined
+    let cancelled = false
+    async function refreshProjects() {
+      setProjectsLoading(true)
+      try {
+        const response = await axios.get('/project-time', {
+          params: { from: isoDate(range.start), to: isoDate(range.end) },
+        })
+        if (!cancelled) {
+          setProjects(response.data.projects || [])
+          setProjectError(response.data.error || '')
+        }
+      } catch (requestError) {
+        if (!cancelled) setProjectError(requestError.message)
+      } finally {
+        if (!cancelled) setProjectsLoading(false)
+      }
+    }
+    refreshProjects()
+    return () => { cancelled = true }
+  }, [activeTab, range])
+
+  function selectPreset(value) {
+    setPreset(value)
+    if (value !== 'custom') setRange(presetRange(value))
+  }
+
+  function changeStart(value) {
+    setPreset('custom')
+    setRange((current) => ({ start: value, end: value > current.end ? value : current.end }))
+  }
+
+  function changeEnd(value) {
+    setPreset('custom')
+    setRange((current) => ({ start: value < current.start ? value : current.start, end: value }))
+  }
+
   return <main>
     <header>
-      <div><p className="eyebrow">AYON tray activity</p><h1>Presence</h1><p className="subtitle">User and computer activity across the studio.</p></div>
+      <div><p className="eyebrow">AYON tray activity</p><h1>Presence</h1><p className="subtitle">User, computer, and project activity across the studio.</p></div>
       <span className="updated">Updated {updatedAt ? relativeTime(updatedAt) : '…'}</span>
     </header>
     {error && <div className="error">Could not refresh presence: {error}</div>}
@@ -156,6 +288,9 @@ export default function App() {
       <button type="button" role="tab" aria-selected={activeTab === 'computers'} onClick={() => setActiveTab('computers')}>
         Computers <span>{data.computers.length}</span>
       </button>
+      <button type="button" role="tab" aria-selected={activeTab === 'projects'} onClick={() => setActiveTab('projects')}>
+        Projects <span>{projects.length}</span>
+      </button>
     </div>
     <div className="tab-content">
       <section className="panel users-panel" role="tabpanel" hidden={activeTab !== 'users'}>
@@ -165,6 +300,26 @@ export default function App() {
       <section className="panel computers-panel" role="tabpanel" hidden={activeTab !== 'computers'}>
         <div className="section-heading"><div><p className="section-label">Computers</p><h2>Computer activity</h2></div><span>{data.computers.length} computers</span></div>
         <SortableTable columns={computerColumns} rows={data.computers} initialSort="computer_name" emptyMessage="No computers have reported yet." />
+      </section>
+      <section className="panel projects-panel" role="tabpanel" hidden={activeTab !== 'projects'}>
+        <div className="section-heading projects-heading">
+          <div><p className="section-label">Projects</p><h2>Time logged</h2></div>
+          <span>{projects.length} projects</span>
+        </div>
+        <div className="date-controls" aria-label="Project report date range">
+          <label className="preset-field"><span className="sr-only">Date preset</span>
+            <select value={preset} onChange={(event) => selectPreset(event.target.value)}>
+              {presets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+          </label>
+          <DateWidget label="Start date" value={range.start} onChange={changeStart} />
+          <span className="range-separator" aria-hidden="true">→</span>
+          <DateWidget label="End date" value={range.end} onChange={changeEnd} />
+        </div>
+        {projectError && <div className="error inline-error">Could not load project time: {projectError}</div>}
+        {projectsLoading
+          ? <div className="loading">Loading project time…</div>
+          : <SortableTable columns={projectColumns} rows={projects} initialSort="project_name" emptyMessage="No task time was logged in this date range." />}
       </section>
     </div>
   </main>

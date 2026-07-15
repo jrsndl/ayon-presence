@@ -570,6 +570,37 @@ async def task_activity_log(
     return [dict(row) for row in rows]
 
 
+async def project_time_summary(
+    date_from: date,
+    date_to: date,
+    timezone_name: str,
+) -> list[dict]:
+    """Aggregate tracked task time per project within an inclusive local range."""
+    period_start, _ = utc_day_bounds(date_from, timezone_name)
+    _, period_end = utc_day_bounds(date_to, timezone_name)
+    rows = await Postgres.fetch(
+        """
+        SELECT project_name,
+            COUNT(DISTINCT user_name)::integer AS users,
+            GREATEST(
+                0,
+                FLOOR(SUM(EXTRACT(EPOCH FROM (
+                    LEAST(COALESCE(ended_at, last_seen_at), $2)
+                    - GREATEST(started_at, $1)
+                ))))::integer
+            ) AS total_seconds
+        FROM public.presence_task_intervals
+        WHERE started_at < $2
+            AND COALESCE(ended_at, last_seen_at) > $1
+        GROUP BY project_name
+        ORDER BY project_name
+        """,
+        period_start,
+        period_end,
+    )
+    return [dict(row) for row in rows]
+
+
 async def missing_summary_dates(
     target_date: date, timezone_name: str, limit: int = 31
 ) -> list[date]:
