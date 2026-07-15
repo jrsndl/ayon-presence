@@ -62,6 +62,8 @@ class PresenceAddon(BaseServerAddon):
 
     def initialize(self) -> None:
         self._scheduler_task = None
+        self._schema_ready = False
+        self._schema_lock = asyncio.Lock()
         self.add_endpoint("events", self.post_event, method="POST")
         self.add_endpoint("users", self.get_users, method="GET")
         self.add_endpoint("activity", self.get_activity, method="GET")
@@ -91,14 +93,25 @@ class PresenceAddon(BaseServerAddon):
         return PresenceSettings(**DEFAULT_VALUES)
 
     async def setup(self) -> None:
-        await create_schema()
-        await create_timelog_schema()
+        await self._ensure_schema()
         if await self.is_production():
             self._scheduler_task = asyncio.create_task(
                 self._scheduler(), name="presence-summary-scheduler"
             )
 
+    async def _ensure_schema(self) -> None:
+        """Apply idempotent upgrades before requests use the Presence tables."""
+        if self._schema_ready:
+            return
+        async with self._schema_lock:
+            if self._schema_ready:
+                return
+            await create_schema()
+            await create_timelog_schema()
+            self._schema_ready = True
+
     async def post_event(self, event: PresenceEvent, user: CurrentUser) -> dict:
+        await self._ensure_schema()
         settings = await self.get_studio_settings()
         if not settings.enabled:
             return {"success": False, "reason": "disabled"}
@@ -170,6 +183,7 @@ class PresenceAddon(BaseServerAddon):
 
     async def get_users(self, user: CurrentUser) -> dict:
         del user
+        await self._ensure_schema()
         settings = await self.get_studio_settings()
         result = await dashboard_data(
             settings.timezone, settings.disconnect_timeout_seconds
@@ -282,6 +296,7 @@ class PresenceAddon(BaseServerAddon):
             raise BadRequestException("Invalid TimeLog date range")
 
     async def get_timelog_context(self, user: CurrentUser) -> dict:
+        await self._ensure_schema()
         settings = await self.get_studio_settings()
         if not settings.timelog_enabled:
             raise ForbiddenException("Presence TimeLog is disabled")
@@ -313,6 +328,7 @@ class PresenceAddon(BaseServerAddon):
         date_to: date = Query(..., alias="to"),
         user_name: str | None = None,
     ) -> dict:
+        await self._ensure_schema()
         requested_user = self._requested_user(user, user_name)
         self._validate_timelog_range(date_from, date_to)
         settings = await self.get_studio_settings()

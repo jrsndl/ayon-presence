@@ -306,12 +306,27 @@ function CalendarView({ logs, activity, autoLogs, days, zone, selected, select, 
 
 function emptyFilters() { return Object.fromEntries(['project', 'taskType', 'taskName', 'taskStatus', 'folderName', 'folderLabel', 'status'].map((name) => [name, { value: ['project', 'status'].includes(name) ? [] : '', paused: false, invert: false }])) }
 
+function requestErrorMessage(error) {
+  const detail = error.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  return `${error.response?.status ? `AYON returned ${error.response.status}: ` : ''}${error.message || 'Unable to load Presence TimeLog'}`
+}
+
 export default function TimeLogApp({ ayonContext }) {
   const [context, setContext] = useState(null); const [data, setData] = useState({ timelogs: [], activity: [], auto_logs: [] }); const [error, setError] = useState('')
+  const [contextAttempt, setContextAttempt] = useState(0)
   const [view, setView] = useState('tracker'); const [preset, setPreset] = useState('this_week'); const [range, setRange] = useState(rangeFor('this_week')); const [zoneMode, setZoneMode] = useState('studio')
   const [targetUser, setTargetUser] = useState(''); const [showFilters, setShowFilters] = useState(false); const [filters, setFilters] = useState(emptyFilters)
   const [selected, setSelected] = useState(new Set()); const [lastIndex, setLastIndex] = useState(null); const [modal, setModal] = useState(null); const [preferencesOpen, setPreferencesOpen] = useState(false); const [pickerTask, setPickerTask] = useState({ project_name: ayonContext?.projectName || '' }); const [, setTick] = useState(0)
-  useEffect(() => { axios.get('/timelog/context').then(({ data: value }) => { setContext(value); setTargetUser(value.user_name); setRange(rangeFor('this_week', value.week_start)) }).catch((requestError) => setError(requestError.message)) }, [])
+  useEffect(() => {
+    let active = true
+    setError('')
+    axios.get('/timelog/context').then(({ data: value }) => {
+      if (!active) return
+      setContext(value); setTargetUser(value.user_name); setRange(rangeFor('this_week', value.week_start))
+    }).catch((requestError) => { if (active) setError(requestErrorMessage(requestError)) })
+    return () => { active = false }
+  }, [contextAttempt])
   const zone = validZone(zoneMode === 'studio' ? context?.studio_timezone : zoneMode === 'tray' ? (data.tray_timezone || context?.tray_timezone) : context?.preferences?.artist_timezone, context?.studio_timezone)
   async function refresh() {
     if (!targetUser) return
@@ -355,7 +370,7 @@ export default function TimeLogApp({ ayonContext }) {
   function createFromSelection() { const seed = selectedLogs.length === 1 ? selectedLogs[0] : pickerTask; setModal({ ...seed, id: null, started_at: new Date().toISOString(), ended_at: new Date(Date.now() + 3600000).toISOString() }) }
   function createFromCalendar(initial) { const start = new Date(initial.started_at); const previous = [...filtered].filter((log) => new Date(log.ended_at || Date.now()) <= start).sort((left, right) => new Date(right.ended_at) - new Date(left.ended_at))[0]; setModal({ ...(previous || pickerTask), id: null, ...initial }) }
   function choosePreset(value) { setPreset(value); if (value !== 'custom') setRange(rangeFor(value, context?.week_start)) }
-  if (!context) return <main className="timelog-page"><div className="tl-loading">Loading Presence TimeLog…</div></main>
+  if (!context) return <main className="timelog-page"><div className="tl-loading">{error ? <><strong>Unable to load Presence TimeLog</strong><span>{error}</span><button onClick={() => setContextAttempt((value) => value + 1)}>Retry</button></> : 'Loading Presence TimeLog…'}</div></main>
   const runningSeconds = data.running ? (Date.now() - new Date(data.running.started_at).getTime()) / 1000 : 0
   return <main className="timelog-page"><header className="tl-page-header"><div><span className="tl-kicker">Presence</span><h1>TimeLog</h1><p>Shape automatic activity into an accurate, reviewable record.</p></div><div className="timezone-toggle" aria-label="Display timezone">{['studio', 'tray', 'artist'].map((mode) => <button className={zoneMode === mode ? 'active' : ''} key={mode} onClick={() => setZoneMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)} Time</button>)}</div></header>
     {error && <div className="tl-error">{error}</div>}
