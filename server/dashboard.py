@@ -68,6 +68,8 @@ def build_dashboard_rows(
                 "last_task_seconds": task.get("total_seconds"),
                 "dcc": _format_dcc(task),
                 "workfile": task.get("workfile_name"),
+                "foreground_application": primary.get("foreground_application"),
+                "foreground_title": primary.get("foreground_title"),
                 "day_started_at": day_start_by_user.get(user_name),
             }
         )

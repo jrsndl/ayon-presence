@@ -112,6 +112,25 @@ class PresenceReporter:
         if start_context is not None:
             self._enqueue_task_event("task_start", start_context)
 
+    def foreground_changed(
+        self,
+        application: Optional[str],
+        title: Optional[str],
+    ) -> None:
+        """Report a foreground sample emitted only when its values change."""
+        monitor = self._monitor
+        if monitor is None:
+            return
+        self.enqueue(
+            "foreground_change",
+            monitor.idle_seconds,
+            monitor.last_input_at,
+            extra={
+                "foreground_application": application,
+                "foreground_title": title,
+            },
+        )
+
     def _is_user_active(self) -> bool:
         monitor = self._monitor
         return monitor is None or monitor.is_active

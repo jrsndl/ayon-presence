@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from ayon_server.lib.postgres import Postgres
+from ayon_server.secrets import Secrets
 
 from .aggregation import ActivityInterval, summarize_day, utc_day_bounds
 from .dashboard import build_dashboard_rows
 from .models import PresenceEvent
 from .raw_events import serialize_raw_events_page
+from .title_crypto import EncryptedTitle, TitleCipher, TitleEncryptionError
 
 
 SCHEMA_SQL = """
@@ -25,10 +28,22 @@ CREATE TABLE IF NOT EXISTS public.presence_sessions (
     last_input_at TIMESTAMPTZ,
     idle_seconds INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'active',
-    exit_reason TEXT
+    exit_reason TEXT,
+    foreground_application TEXT,
+    foreground_title_ciphertext BYTEA,
+    foreground_title_nonce BYTEA,
+    foreground_title_key_name TEXT
 );
 CREATE INDEX IF NOT EXISTS presence_sessions_user_machine_idx
     ON public.presence_sessions (user_name, machine_name, last_heartbeat_at DESC);
+ALTER TABLE public.presence_sessions
+    ADD COLUMN IF NOT EXISTS foreground_application TEXT;
+ALTER TABLE public.presence_sessions
+    ADD COLUMN IF NOT EXISTS foreground_title_ciphertext BYTEA;
+ALTER TABLE public.presence_sessions
+    ADD COLUMN IF NOT EXISTS foreground_title_nonce BYTEA;
+ALTER TABLE public.presence_sessions
+    ADD COLUMN IF NOT EXISTS foreground_title_key_name TEXT;
 
 CREATE TABLE IF NOT EXISTS public.presence_events (
     id BIGSERIAL PRIMARY KEY,
@@ -40,10 +55,25 @@ CREATE TABLE IF NOT EXISTS public.presence_events (
     client_time TIMESTAMPTZ,
     last_input_at TIMESTAMPTZ,
     idle_seconds INTEGER NOT NULL,
-    payload JSONB NOT NULL DEFAULT '{}'::jsonb
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    foreground_title_ciphertext BYTEA,
+    foreground_title_nonce BYTEA,
+    foreground_title_key_name TEXT
 );
 CREATE INDEX IF NOT EXISTS presence_events_user_time_idx
     ON public.presence_events (user_name, received_at DESC);
+ALTER TABLE public.presence_events
+    ADD COLUMN IF NOT EXISTS foreground_title_ciphertext BYTEA;
+ALTER TABLE public.presence_events
+    ADD COLUMN IF NOT EXISTS foreground_title_nonce BYTEA;
+ALTER TABLE public.presence_events
+    ADD COLUMN IF NOT EXISTS foreground_title_key_name TEXT;
+
+CREATE TABLE IF NOT EXISTS public.presence_title_keys (
+    key_name TEXT PRIMARY KEY,
+    salt BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS public.presence_activity_intervals (
     id BIGSERIAL PRIMARY KEY,
@@ -112,14 +142,79 @@ async def create_schema() -> None:
     await Postgres.execute(SCHEMA_SQL)
 
 
+_TITLE_CIPHERS: dict[str, TitleCipher] = {}
+
+
 def _payload_json(event: PresenceEvent) -> str:
-    return event.json()
+    """Serialize an event while guaranteeing titles never enter JSON storage."""
+    return event.json(exclude={"foreground_title"})
+
+
+async def _title_cipher(key_name: str) -> TitleCipher:
+    cached = _TITLE_CIPHERS.get(key_name)
+    if cached is not None:
+        return cached
+    passphrase = await Secrets.get(key_name)
+    if not passphrase:
+        raise TitleEncryptionError("The selected AYON Secret is missing or empty")
+    row = await Postgres.fetchrow(
+        """
+        INSERT INTO public.presence_title_keys (key_name, salt, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key_name) DO UPDATE SET key_name = EXCLUDED.key_name
+        RETURNING salt
+        """,
+        key_name,
+        os.urandom(16),
+    )
+    if row is None:
+        raise TitleEncryptionError("Unable to prepare title encryption metadata")
+    cipher = TitleCipher(str(passphrase), bytes(row["salt"]), key_name)
+    _TITLE_CIPHERS[key_name] = cipher
+    return cipher
+
+
+async def _encrypt_title(
+    title: str | None, key_name: str | None
+) -> EncryptedTitle | None:
+    if not title:
+        return None
+    if not key_name:
+        raise TitleEncryptionError("No AYON Secret is selected for title encryption")
+    return (await _title_cipher(key_name)).encrypt(title)
+
+
+async def _decrypt_title(
+    ciphertext: object, nonce: object, key_name: object
+) -> str | None:
+    if not ciphertext or not nonce or not key_name:
+        return None
+    try:
+        return (await _title_cipher(str(key_name))).decrypt(
+            bytes(ciphertext), bytes(nonce)
+        )
+    except Exception:
+        return None
+
+
+async def _rows_with_decrypted_titles(rows) -> list[dict]:
+    result = []
+    for source in rows:
+        row = dict(source)
+        row["foreground_title"] = await _decrypt_title(
+            row.get("foreground_title_ciphertext"),
+            row.get("foreground_title_nonce"),
+            row.get("foreground_title_key_name"),
+        )
+        result.append(row)
+    return result
 
 
 async def record_event(
     user_name: str,
     event: PresenceEvent,
     idle_threshold_seconds: int,
+    foreground_title_key_name: str | None = None,
 ) -> datetime:
     now = datetime.now(timezone.utc)
     last_input = event.last_input_at
@@ -132,14 +227,22 @@ async def record_event(
         if event.event_type == "idle" or event.idle_seconds >= idle_threshold_seconds
         else "active"
     )
+    encrypted_title = await _encrypt_title(
+        event.foreground_title, foreground_title_key_name
+    )
+    title_ciphertext = encrypted_title.ciphertext if encrypted_title else None
+    title_nonce = encrypted_title.nonce if encrypted_title else None
+    stored_key_name = foreground_title_key_name if encrypted_title else None
 
     async with Postgres.transaction():
         await Postgres.execute(
             """
             INSERT INTO public.presence_events (
                 user_name, machine_name, session_id, event_type, received_at,
-                client_time, last_input_at, idle_seconds, payload
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                client_time, last_input_at, idle_seconds, payload,
+                foreground_title_ciphertext, foreground_title_nonce,
+                foreground_title_key_name
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
             """,
             user_name,
             event.machine_name,
@@ -150,20 +253,41 @@ async def record_event(
             last_input,
             event.idle_seconds,
             _payload_json(event),
+            title_ciphertext,
+            title_nonce,
+            stored_key_name,
         )
         await Postgres.execute(
             """
             INSERT INTO public.presence_sessions (
                 session_id, user_name, machine_name, platform, client_version,
-                started_at, last_heartbeat_at, last_input_at, idle_seconds, state
-            ) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9)
+                started_at, last_heartbeat_at, last_input_at, idle_seconds, state,
+                foreground_application, foreground_title_ciphertext,
+                foreground_title_nonce, foreground_title_key_name
+            ) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $11, $12, $13, $14)
             ON CONFLICT (session_id) DO UPDATE SET
                 last_heartbeat_at = EXCLUDED.last_heartbeat_at,
                 last_input_at = EXCLUDED.last_input_at,
                 idle_seconds = EXCLUDED.idle_seconds,
                 state = EXCLUDED.state,
                 ended_at = CASE WHEN $10 = 'session_end' THEN $6 ELSE NULL END,
-                exit_reason = CASE WHEN $10 = 'session_end' THEN 'normal' ELSE NULL END
+                exit_reason = CASE WHEN $10 = 'session_end' THEN 'normal' ELSE NULL END,
+                foreground_application = CASE
+                    WHEN $10 = 'foreground_change' THEN $11
+                    ELSE presence_sessions.foreground_application
+                END,
+                foreground_title_ciphertext = CASE
+                    WHEN $10 = 'foreground_change' THEN $12
+                    ELSE presence_sessions.foreground_title_ciphertext
+                END,
+                foreground_title_nonce = CASE
+                    WHEN $10 = 'foreground_change' THEN $13
+                    ELSE presence_sessions.foreground_title_nonce
+                END,
+                foreground_title_key_name = CASE
+                    WHEN $10 = 'foreground_change' THEN $14
+                    ELSE presence_sessions.foreground_title_key_name
+                END
             """,
             event.session_id,
             user_name,
@@ -175,6 +299,10 @@ async def record_event(
             event.idle_seconds,
             state,
             event.event_type,
+            event.foreground_application,
+            title_ciphertext,
+            title_nonce,
+            stored_key_name,
         )
 
         if state == "active" and event.event_type != "session_end":
@@ -381,6 +509,8 @@ async def dashboard_data(
         SELECT DISTINCT ON (user_name, machine_name)
             user_name, machine_name, platform, client_version, state,
             last_heartbeat_at, last_input_at, idle_seconds,
+            foreground_application, foreground_title_ciphertext,
+            foreground_title_nonce, foreground_title_key_name,
             last_heartbeat_at >= NOW() - ($1 * INTERVAL '1 second')
                 AS is_connected
         FROM public.presence_sessions
@@ -389,6 +519,7 @@ async def dashboard_data(
         """,
         disconnect_timeout_seconds,
     )
+    sessions = await _rows_with_decrypted_titles(sessions)
     latest_tasks = await Postgres.fetch(
         """
         SELECT DISTINCT ON (user_name)
@@ -414,9 +545,7 @@ async def dashboard_data(
         ORDER BY source_machine_name, last_seen_at DESC, started_at DESC
         """,
     )
-    local_today = datetime.now(timezone.utc).astimezone(
-        ZoneInfo(timezone_name)
-    ).date()
+    local_today = datetime.now(timezone.utc).astimezone(ZoneInfo(timezone_name)).date()
     day_start, day_end = utc_day_bounds(local_today, timezone_name)
     day_starts = await Postgres.fetch(
         """
@@ -431,7 +560,7 @@ async def dashboard_data(
         day_end,
     )
     return build_dashboard_rows(
-        [dict(row) for row in sessions],
+        sessions,
         [dict(row) for row in latest_tasks],
         [dict(row) for row in day_starts],
         [dict(row) for row in latest_machine_contexts],
@@ -610,7 +739,9 @@ async def raw_events_page(
     """Return one newest-first page of raw PresenceEvent payloads."""
     rows = await Postgres.fetch(
         """
-        SELECT id, user_name, received_at, payload
+        SELECT id, user_name, received_at, payload,
+            foreground_title_ciphertext, foreground_title_nonce,
+            foreground_title_key_name
         FROM public.presence_events
         WHERE ($2::bigint IS NULL OR id < $2)
         ORDER BY id DESC
@@ -619,7 +750,14 @@ async def raw_events_page(
         page_size + 1,
         before_id,
     )
-    return serialize_raw_events_page(rows, page_size)
+    decrypted_rows = await _rows_with_decrypted_titles(rows)
+    for row in decrypted_rows:
+        if row["foreground_title"] is not None:
+            payload = row["payload"] or {}
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            row["payload"] = {**payload, "foreground_title": row["foreground_title"]}
+    return serialize_raw_events_page(decrypted_rows, page_size)
 
 
 async def missing_summary_dates(

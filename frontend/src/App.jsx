@@ -100,6 +100,8 @@ const userColumns = [
   },
   { key: 'dcc', label: 'DCC' },
   { key: 'workfile', label: 'Workfile' },
+  { key: 'foreground_application', label: 'Foreground App' },
+  { key: 'foreground_title', label: 'Window Title' },
   { key: 'last_active_at', label: 'Last Active', render: (row) => relativeTime(row.last_active_at) },
   { key: 'last_project', label: 'Last Project' },
   { key: 'last_folder', label: 'Last Folder' },
@@ -154,6 +156,8 @@ const eventColumns = [
   { key: 'dcc_name', label: 'DCC Name' },
   { key: 'dcc_version', label: 'DCC Version' },
   { key: 'workfile_name', label: 'Workfile' },
+  { key: 'foreground_application', label: 'Foreground App' },
+  { key: 'foreground_title', label: 'Window Title' },
 ]
 
 const presets = [

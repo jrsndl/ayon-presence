@@ -30,6 +30,8 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
             "last_input_at": utc(10),
             "last_heartbeat_at": utc(10),
             "is_connected": True,
+            "foreground_application": "nuke.exe",
+            "foreground_title": "sh010 comp",
         },
         {
             "user_name": "bob",
@@ -76,6 +78,8 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
         "last_task_seconds": 3600,
         "dcc": "NukeX 15.2.1",
         "workfile": "sh010_comp_v012.nk",
+        "foreground_application": "nuke.exe",
+        "foreground_title": "sh010 comp",
         "day_started_at": utc(7),
     }
     new_computer = next(

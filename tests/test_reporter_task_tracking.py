@@ -56,9 +56,7 @@ def test_task_pauses_on_idle_and_resumes_on_activity():
         "task_stop",
         "task_start",
     ]
-    assert all(
-        context["task_name"] == "Compositing" for _event_type, context in events
-    )
+    assert all(context["task_name"] == "Compositing" for _event_type, context in events)
     assert "task_started_at" in events[0][1]
     assert "task_started_at" in events[2][1]
 
@@ -151,3 +149,18 @@ def test_send_posts_event_fields_at_top_level(monkeypatch):
     assert captured["endpoint"] == "addons/presence/test/events"
     assert captured["kwargs"] == payload
     assert captured["status_checked"] is True
+
+
+def test_foreground_change_is_enqueued_with_current_activity():
+    reporter, _events = _reporter()
+    captured = []
+    reporter.enqueue = lambda *args, **kwargs: captured.append((args, kwargs))
+
+    reporter.foreground_changed("chrome.exe", "AYON — Chrome")
+
+    args, kwargs = captured[0]
+    assert args[0] == "foreground_change"
+    assert kwargs["extra"] == {
+        "foreground_application": "chrome.exe",
+        "foreground_title": "AYON — Chrome",
+    }
