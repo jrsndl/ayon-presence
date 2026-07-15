@@ -74,6 +74,7 @@ class PresenceAddon(BaseServerAddon):
             "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
             "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
             "projects_default_date_range": settings.projects_default_date_range,
+            "projects_week_start": settings.projects_week_start,
             "raw_events_debug_enabled": settings.raw_events_debug_enabled,
         })
         return result

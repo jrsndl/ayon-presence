@@ -38,8 +38,9 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Summary run time | 04:00 |
 | Reporting timezone | Europe/Prague |
 | Per-task active-time tracking | Enabled |
-| Raw event retention | 30 days |
+| Raw event retention | 90 days |
 | Raw events debug view | Enabled |
+| Projects calendar week start | Monday |
 
 ## Development
 

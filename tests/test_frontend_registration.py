@@ -41,7 +41,9 @@ def test_dashboard_exposes_projects_report_and_date_controls():
     assert "label: 'Time logged'" in source
     assert 'role="dialog"' in source
     assert 'role="grid"' in source
-    assert "calendarDays(visibleMonth)" in source
+    assert "calendarDays(visibleMonth, weekStart)" in source
+    assert "presetRange(value, weekStart)" in source
+    assert "weekStart === 'sunday'" in source
     assert "document.addEventListener('mousedown', closeOutside)" in source
     assert ".projects-panel { overflow: visible; }" in Path("frontend/src/styles.css").read_text(encoding="utf-8")
     assert "['this_week', 'This Week']" in source
@@ -57,6 +59,12 @@ def test_projects_default_date_range_is_configurable():
     assert '"projects_default_date_range": "this_week"' in settings
     assert 'self.add_endpoint("project-time"' in server
     assert '"projects_default_date_range": settings.projects_default_date_range' in server
+    assert "enum_resolver=timezone_enum_resolver" in settings
+    assert '"timezone": "Europe/Prague"' in settings
+    assert "raw_event_retention_days: int = SettingsField(\n        90" in settings
+    assert 'projects_week_start: Literal["monday", "sunday"]' in settings
+    assert '"projects_week_start": "monday"' in settings
+    assert '"projects_week_start": settings.projects_week_start' in server
     assert "ARRAY_AGG(DISTINCT user_name ORDER BY user_name) AS users" in database
     assert "COUNT(DISTINCT user_name)::integer AS user_count" in database
 

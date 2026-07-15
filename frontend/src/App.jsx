@@ -183,17 +183,19 @@ function isoDate(value) {
   return `${year}-${month}-${day}`
 }
 
-function presetRange(preset, now = new Date()) {
+function presetRange(preset, weekStart = 'monday', now = new Date()) {
   const today = dateOnly(now.getFullYear(), now.getMonth(), now.getDate())
-  const mondayOffset = (today.getDay() + 6) % 7
-  const thisMonday = addDays(today, -mondayOffset)
+  const weekOffset = weekStart === 'sunday'
+    ? today.getDay()
+    : (today.getDay() + 6) % 7
+  const currentWeekStart = addDays(today, -weekOffset)
   if (preset === 'today' || preset === 'custom') return { start: today, end: today }
   if (preset === 'yesterday') {
     const yesterday = addDays(today, -1)
     return { start: yesterday, end: yesterday }
   }
-  if (preset === 'this_week') return { start: thisMonday, end: addDays(thisMonday, 6) }
-  if (preset === 'last_week') return { start: addDays(thisMonday, -7), end: addDays(thisMonday, -1) }
+  if (preset === 'this_week') return { start: currentWeekStart, end: addDays(currentWeekStart, 6) }
+  if (preset === 'last_week') return { start: addDays(currentWeekStart, -7), end: addDays(currentWeekStart, -1) }
   if (preset === 'this_month') return {
     start: dateOnly(today.getFullYear(), today.getMonth(), 1),
     end: dateOnly(today.getFullYear(), today.getMonth() + 1, 0),
@@ -212,7 +214,10 @@ function presetRange(preset, now = new Date()) {
   }
 }
 
-const weekdayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+const weekdayLabels = {
+  monday: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+  sunday: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+}
 
 function sameDate(left, right) {
   return left.getFullYear() === right.getFullYear()
@@ -220,14 +225,16 @@ function sameDate(left, right) {
     && left.getDate() === right.getDate()
 }
 
-function calendarDays(month) {
+function calendarDays(month, weekStart) {
   const first = dateOnly(month.getFullYear(), month.getMonth(), 1)
-  const mondayOffset = (first.getDay() + 6) % 7
-  const gridStart = addDays(first, -mondayOffset)
+  const weekOffset = weekStart === 'sunday'
+    ? first.getDay()
+    : (first.getDay() + 6) % 7
+  const gridStart = addDays(first, -weekOffset)
   return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
 }
 
-function DateWidget({ label, value, onChange }) {
+function DateWidget({ label, value, weekStart, onChange }) {
   const [open, setOpen] = useState(false)
   const [visibleMonth, setVisibleMonth] = useState(() => dateOnly(value.getFullYear(), value.getMonth(), 1))
   const rootRef = useRef(null)
@@ -280,10 +287,10 @@ function DateWidget({ label, value, onChange }) {
         </div>
       </div>
       <div className="calendar-weekdays" aria-hidden="true">
-        {weekdayLabels.map((weekday) => <span key={weekday}>{weekday}</span>)}
+        {weekdayLabels[weekStart].map((weekday) => <span key={weekday}>{weekday}</span>)}
       </div>
       <div className="calendar-grid" role="grid">
-        {calendarDays(visibleMonth).map((day) => {
+        {calendarDays(visibleMonth, weekStart).map((day) => {
           const outside = day.getMonth() !== visibleMonth.getMonth()
           const selected = sameDate(day, value)
           const isToday = sameDate(day, today)
@@ -317,6 +324,7 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState(null)
   const [activeTab, setActiveTab] = useState('users')
   const [preset, setPreset] = useState('this_week')
+  const [weekStart, setWeekStart] = useState('monday')
   const [range, setRange] = useState(() => presetRange('this_week'))
   const initializedPreset = useRef(false)
   const eventsInitialized = useRef(false)
@@ -331,8 +339,10 @@ export default function App() {
           setData(response.data)
           if (!initializedPreset.current) {
             const configured = response.data.projects_default_date_range || 'this_week'
+            const configuredWeekStart = response.data.projects_week_start || 'monday'
             setPreset(configured)
-            setRange(presetRange(configured))
+            setWeekStart(configuredWeekStart)
+            setRange(presetRange(configured, configuredWeekStart))
             initializedPreset.current = true
           }
           setUpdatedAt(new Date())
@@ -407,7 +417,7 @@ export default function App() {
 
   function selectPreset(value) {
     setPreset(value)
-    if (value !== 'custom') setRange(presetRange(value))
+    if (value !== 'custom') setRange(presetRange(value, weekStart))
   }
 
   function changeStart(value) {
@@ -460,9 +470,9 @@ export default function App() {
               {presets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
             </select>
           </label>
-          <DateWidget label="Start date" value={range.start} onChange={changeStart} />
+          <DateWidget label="Start date" value={range.start} weekStart={weekStart} onChange={changeStart} />
           <span className="range-separator" aria-hidden="true">→</span>
-          <DateWidget label="End date" value={range.end} onChange={changeEnd} />
+          <DateWidget label="End date" value={range.end} weekStart={weekStart} onChange={changeEnd} />
         </div>
         {projectError && <div className="error inline-error">Could not load project time: {projectError}</div>}
         {projectsLoading

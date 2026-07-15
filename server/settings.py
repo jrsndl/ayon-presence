@@ -1,10 +1,27 @@
 from __future__ import annotations
 
 from typing import Any, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from ayon_server.settings import BaseSettingsModel, SettingsField
 from pydantic import validator
+
+
+def timezone_enum_resolver() -> list[str]:
+    """Return installed IANA zones with the studio default first."""
+    values = sorted(available_timezones())
+    default = "Europe/Prague"
+    if default in values:
+        values.remove(default)
+        values.insert(0, default)
+    return values
+
+
+def week_start_enum_resolver() -> list[dict[str, str]]:
+    return [
+        {"value": "monday", "label": "Monday"},
+        {"value": "sunday", "label": "Sunday"},
+    ]
 
 
 class PresenceSettings(BaseSettingsModel):
@@ -36,9 +53,10 @@ class PresenceSettings(BaseSettingsModel):
         "Europe/Prague",
         title="Reporting timezone",
         description="IANA timezone used for calendar-day boundaries.",
+        enum_resolver=timezone_enum_resolver,
     )
     raw_event_retention_days: int = SettingsField(
-        30, title="Raw event retention (days)", ge=1, le=3650
+        90, title="Raw event retention (days)", ge=1, le=3650
     )
     raw_events_debug_enabled: bool = SettingsField(
         True,
@@ -63,6 +81,14 @@ class PresenceSettings(BaseSettingsModel):
         title="Projects default date range",
         description="Initial date preset shown on the Presence Projects tab.",
     )
+    projects_week_start: Literal["monday", "sunday"] = SettingsField(
+        "monday",
+        title="Projects calendar week start",
+        description=(
+            "First day of the week used by the Projects calendar and week presets."
+        ),
+        enum_resolver=week_start_enum_resolver,
+    )
 
     @validator("timezone")
     def validate_timezone(cls, value: str) -> str:
@@ -81,7 +107,8 @@ DEFAULT_VALUES: dict[str, Any] = {
     "disconnect_timeout_seconds": 600,
     "daily_summary_run_time": "04:00",
     "timezone": "Europe/Prague",
-    "raw_event_retention_days": 30,
+    "raw_event_retention_days": 90,
     "raw_events_debug_enabled": True,
     "projects_default_date_range": "this_week",
+    "projects_week_start": "monday",
 }
