@@ -98,6 +98,9 @@ class PresenceAddon(BaseServerAddon):
                 user.name,
                 event,
                 settings.active_idle_threshold_seconds,
+                settings.timezone,
+                settings.heartbeat_interval_seconds,
+                settings.day_end_heartbeat_count,
                 title_key_name,
             )
         except TitleEncryptionError:
@@ -111,6 +114,9 @@ class PresenceAddon(BaseServerAddon):
                 user.name,
                 event,
                 settings.active_idle_threshold_seconds,
+                settings.timezone,
+                settings.heartbeat_interval_seconds,
+                settings.day_end_heartbeat_count,
             )
         return {
             "success": True,

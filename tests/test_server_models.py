@@ -66,6 +66,7 @@ def test_settings_validate_run_time_and_timezone(monkeypatch):
     assert settings.PresenceSettings().task_tracking_enabled is True
     assert settings.PresenceSettings().foreground_application_enabled is False
     assert settings.PresenceSettings().foreground_title_enabled is False
+    assert settings.PresenceSettings().day_end_heartbeat_count == 20
     with pytest.raises(pydantic.ValidationError):
         settings.PresenceSettings(daily_summary_run_time="25:00")
     with pytest.raises(pydantic.ValidationError):

@@ -20,14 +20,12 @@ def _activity_sort_key(session: Mapping[str, Any]) -> tuple[float, str]:
 def build_dashboard_rows(
     sessions: Iterable[Mapping[str, Any]],
     latest_tasks: Iterable[Mapping[str, Any]],
-    day_starts: Iterable[Mapping[str, Any]],
+    day_boundaries: Iterable[Mapping[str, Any]],
     latest_machine_contexts: Iterable[Mapping[str, Any]] = (),
 ) -> dict[str, list[dict[str, Any]]]:
     """Build deterministic user-centric and computer-centric rows."""
     task_by_user = {str(row["user_name"]): dict(row) for row in latest_tasks}
-    day_start_by_user = {
-        str(row["user_name"]): row.get("day_started_at") for row in day_starts
-    }
+    day_boundary_by_user = {str(row["user_name"]): dict(row) for row in day_boundaries}
     dcc_by_computer = {
         str(row["source_machine_name"]): _format_dcc(row)
         for row in latest_machine_contexts
@@ -56,6 +54,7 @@ def build_dashboard_rows(
             }
         )
         task = task_by_user.get(user_name, {})
+        day_boundary = day_boundary_by_user.get(user_name, {})
         user_rows.append(
             {
                 "user_name": user_name,
@@ -70,7 +69,8 @@ def build_dashboard_rows(
                 "workfile": task.get("workfile_name"),
                 "foreground_application": primary.get("foreground_application"),
                 "foreground_title": primary.get("foreground_title"),
-                "day_started_at": day_start_by_user.get(user_name),
+                "day_started_at": day_boundary.get("day_started_at"),
+                "day_ended_at": day_boundary.get("day_ended_at"),
             }
         )
 

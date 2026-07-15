@@ -28,6 +28,17 @@ def utc_day_bounds(
     return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
 
 
+def repaired_day_ended_at(
+    last_active_at: datetime,
+    period_end: datetime,
+    active_over_midnight: bool,
+) -> datetime:
+    """Return a corrected workday end, clamped at its calendar boundary."""
+    if active_over_midnight:
+        return period_end
+    return min(last_active_at, period_end)
+
+
 def merge_ranges(
     ranges: Iterable[tuple[datetime, datetime]],
 ) -> list[tuple[datetime, datetime]]:

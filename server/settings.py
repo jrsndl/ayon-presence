@@ -49,6 +49,17 @@ class PresenceSettings(BaseSettingsModel):
         ge=60,
         le=3600,
     )
+    day_end_heartbeat_count: int = SettingsField(
+        20,
+        title="Day End quiet heartbeats",
+        description=(
+            "Number of heartbeat intervals without newer input after which the "
+            "user's last active time is recorded as Day Ended. Later activity "
+            "removes Day Ended until the user becomes inactive again."
+        ),
+        ge=1,
+        le=288,
+    )
     active_idle_threshold_seconds: int = SettingsField(
         300,
         title="Idle threshold (seconds)",
@@ -197,6 +208,7 @@ class PresenceSettings(BaseSettingsModel):
 DEFAULT_VALUES: dict[str, Any] = {
     "enabled": True,
     "heartbeat_interval_seconds": 300,
+    "day_end_heartbeat_count": 20,
     "active_idle_threshold_seconds": 300,
     "task_tracking_enabled": True,
     "foreground_application_enabled": False,

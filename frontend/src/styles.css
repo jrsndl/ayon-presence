@@ -21,7 +21,7 @@ p { margin: 0; }
 .section-heading > span { color: #7f899a; font-size: .78rem; }
 .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: .82rem; }
-.users-panel table { min-width: 1540px; }
+.users-panel table { min-width: 1660px; }
 .computers-panel table { min-width: 640px; }
 .projects-panel table { min-width: 560px; }
 .projects-panel { overflow: visible; }

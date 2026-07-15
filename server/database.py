@@ -8,7 +8,12 @@ from zoneinfo import ZoneInfo
 from ayon_server.lib.postgres import Postgres
 from ayon_server.secrets import Secrets
 
-from .aggregation import ActivityInterval, summarize_day, utc_day_bounds
+from .aggregation import (
+    ActivityInterval,
+    repaired_day_ended_at,
+    summarize_day,
+    utc_day_bounds,
+)
 from .dashboard import build_dashboard_rows
 from .models import PresenceEvent
 from .raw_events import serialize_raw_events_page
@@ -90,6 +95,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS presence_one_open_interval_idx
     ON public.presence_activity_intervals (session_id) WHERE ended_at IS NULL;
 CREATE INDEX IF NOT EXISTS presence_intervals_range_idx
     ON public.presence_activity_intervals (started_at, ended_at);
+
+CREATE TABLE IF NOT EXISTS public.presence_day_boundaries (
+    user_name TEXT NOT NULL,
+    activity_date DATE NOT NULL,
+    day_started_at TIMESTAMPTZ NOT NULL,
+    last_active_at TIMESTAMPTZ NOT NULL,
+    day_ended_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_name, activity_date),
+    CHECK (last_active_at >= day_started_at),
+    CHECK (day_ended_at IS NULL OR day_ended_at >= day_started_at)
+);
+CREATE INDEX IF NOT EXISTS presence_day_boundaries_date_idx
+    ON public.presence_day_boundaries (activity_date, user_name);
 
 CREATE TABLE IF NOT EXISTS public.presence_task_intervals (
     id BIGSERIAL PRIMARY KEY,
@@ -214,6 +233,9 @@ async def record_event(
     user_name: str,
     event: PresenceEvent,
     idle_threshold_seconds: int,
+    timezone_name: str,
+    heartbeat_interval_seconds: int,
+    day_end_heartbeat_count: int,
     foreground_title_key_name: str | None = None,
 ) -> datetime:
     now = datetime.now(timezone.utc)
@@ -344,7 +366,72 @@ async def record_event(
             )
         if event.event_type.startswith("task_"):
             await _record_task_event(user_name, event, now)
+        await _record_day_boundary(
+            user_name,
+            event.event_type,
+            last_input,
+            now,
+            timezone_name,
+            heartbeat_interval_seconds,
+            day_end_heartbeat_count,
+        )
     return now
+
+
+async def _record_day_boundary(
+    user_name: str,
+    event_type: str,
+    last_input: datetime,
+    now: datetime,
+    timezone_name: str,
+    heartbeat_interval_seconds: int,
+    day_end_heartbeat_count: int,
+) -> None:
+    """Update today's workday and close it after the configured quiet period."""
+    activity_date = last_input.astimezone(ZoneInfo(timezone_name)).date()
+    await Postgres.execute(
+        """
+        INSERT INTO public.presence_day_boundaries (
+            user_name, activity_date, day_started_at, last_active_at, updated_at
+        ) VALUES ($1, $2, $3, $3, $4)
+        ON CONFLICT (user_name, activity_date) DO UPDATE SET
+            day_started_at = LEAST(
+                presence_day_boundaries.day_started_at,
+                EXCLUDED.day_started_at
+            ),
+            last_active_at = GREATEST(
+                presence_day_boundaries.last_active_at,
+                EXCLUDED.last_active_at
+            ),
+            day_ended_at = CASE
+                WHEN EXCLUDED.last_active_at
+                    > presence_day_boundaries.last_active_at THEN NULL
+                ELSE presence_day_boundaries.day_ended_at
+            END,
+            updated_at = EXCLUDED.updated_at
+        """,
+        user_name,
+        activity_date,
+        last_input,
+        now,
+    )
+    if event_type != "heartbeat":
+        return
+    quiet_seconds = heartbeat_interval_seconds * day_end_heartbeat_count
+    await Postgres.execute(
+        """
+        UPDATE public.presence_day_boundaries
+        SET day_ended_at = last_active_at, updated_at = $3
+        WHERE user_name = $1
+            AND activity_date = $2
+            AND day_ended_at IS NULL
+            AND last_active_at <= $3 - ($4 * INTERVAL '1 second')
+        """,
+        user_name,
+        activity_date,
+        now,
+        quiet_seconds,
+    )
 
 
 async def _record_task_event(
@@ -546,23 +633,18 @@ async def dashboard_data(
         """,
     )
     local_today = datetime.now(timezone.utc).astimezone(ZoneInfo(timezone_name)).date()
-    day_start, day_end = utc_day_bounds(local_today, timezone_name)
-    day_starts = await Postgres.fetch(
+    day_boundaries = await Postgres.fetch(
         """
-        SELECT user_name,
-            MIN(GREATEST(started_at, $1)) AS day_started_at
-        FROM public.presence_activity_intervals
-        WHERE started_at < $2
-            AND COALESCE(ended_at, last_heartbeat_at) > $1
-        GROUP BY user_name
+        SELECT user_name, day_started_at, day_ended_at
+        FROM public.presence_day_boundaries
+        WHERE activity_date = $1
         """,
-        day_start,
-        day_end,
+        local_today,
     )
     return build_dashboard_rows(
         sessions,
         [dict(row) for row in latest_tasks],
-        [dict(row) for row in day_starts],
+        [dict(row) for row in day_boundaries],
         [dict(row) for row in latest_machine_contexts],
     )
 
@@ -571,7 +653,7 @@ async def consolidate_day(activity_date: date, timezone_name: str) -> None:
     period_start, period_end = utc_day_bounds(activity_date, timezone_name)
     rows = await Postgres.fetch(
         """
-        SELECT user_name, machine_name, started_at, ended_at
+        SELECT user_name, machine_name, started_at, ended_at, last_heartbeat_at
         FROM public.presence_activity_intervals
         WHERE started_at < $2 AND COALESCE(ended_at, last_heartbeat_at) > $1
         """,
@@ -583,11 +665,27 @@ async def consolidate_day(activity_date: date, timezone_name: str) -> None:
             row["user_name"],
             row["machine_name"],
             row["started_at"],
-            row["ended_at"] or period_end,
+            row["ended_at"] or row["last_heartbeat_at"],
         )
         for row in rows
     ]
     summaries = summarize_day(activity_date, timezone_name, intervals)
+    input_rows = await Postgres.fetch(
+        """
+        SELECT user_name, MAX(last_input_at) AS last_active_at
+        FROM public.presence_events
+        WHERE last_input_at >= $1 AND last_input_at < $2
+        GROUP BY user_name
+        """,
+        period_start,
+        period_end,
+    )
+    last_input_by_user = {row["user_name"]: row["last_active_at"] for row in input_rows}
+    active_over_midnight = {
+        row["user_name"]
+        for row in rows
+        if (row["ended_at"] or row["last_heartbeat_at"]) >= period_end
+    }
     async with Postgres.transaction():
         await Postgres.execute("SELECT pg_advisory_xact_lock(70726573656)")
         await Postgres.execute(
@@ -617,6 +715,33 @@ async def consolidate_day(activity_date: date, timezone_name: str) -> None:
                 item["earliest_activity"],
                 item["latest_activity"],
                 item["total_active_seconds"],
+            )
+            last_active_at = last_input_by_user.get(
+                item["user_name"], item["latest_activity"]
+            )
+            last_active_at = max(last_active_at, item["earliest_activity"])
+            day_ended_at = repaired_day_ended_at(
+                last_active_at,
+                period_end,
+                item["user_name"] in active_over_midnight,
+            )
+            await Postgres.execute(
+                """
+                INSERT INTO public.presence_day_boundaries (
+                    user_name, activity_date, day_started_at, last_active_at,
+                    day_ended_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, NOW())
+                ON CONFLICT (user_name, activity_date) DO UPDATE SET
+                    day_started_at = EXCLUDED.day_started_at,
+                    last_active_at = EXCLUDED.last_active_at,
+                    day_ended_at = EXCLUDED.day_ended_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                item["user_name"],
+                activity_date,
+                item["earliest_activity"],
+                last_active_at,
+                day_ended_at,
             )
         await Postgres.execute(
             """

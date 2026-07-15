@@ -108,6 +108,7 @@ const userColumns = [
   { key: 'last_task', label: 'Last Task' },
   { key: 'last_task_seconds', label: 'Last Task Time', render: (row) => duration(row.last_task_seconds) },
   { key: 'day_started_at', label: 'Day Started', render: (row) => timeOfDay(row.day_started_at) },
+  { key: 'day_ended_at', label: 'Day Ended', render: (row) => timeOfDay(row.day_ended_at) },
 ]
 
 const computerColumns = [

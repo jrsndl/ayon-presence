@@ -39,6 +39,7 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Setting | Default |
 | --- | --- |
 | Heartbeat | 300 seconds |
+| Day End quiet heartbeats | 20 |
 | Active/idle threshold | 300 seconds |
 | Disconnect timeout | 600 seconds |
 | Summary run time | 04:00 |
@@ -86,12 +87,22 @@ keys so retained events remain readable; create a new Secret name instead of
 changing an existing value. A server restart is required after changing a
 Secret's value because derived keys are cached in server memory.
 
+## Workday boundaries
+
+The Users table shows Day Started and Day Ended in the reporting timezone. Day
+Ended is set to the last input time after the configured number of heartbeat
+intervals pass without newer activity. New activity clears Day Ended. Daily
+summary processing repairs historical boundaries from retained activity data;
+when activity crosses a calendar boundary, the earlier day ends exactly at local
+midnight.
+
 The server creates these tables in the `public` schema on setup:
 
 - `presence_sessions`
 - `presence_events`
 - `presence_title_keys`
 - `presence_activity_intervals`
+- `presence_day_boundaries`
 - `presence_task_intervals`
 - `presence_daily_activity`
 - `presence_summary_runs`

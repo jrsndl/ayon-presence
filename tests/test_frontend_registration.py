@@ -53,6 +53,7 @@ def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
     assert 'role="tablist"' in source
     assert source.count("label: 'DCC'") == 2
     assert "label: 'Workfile'" in source
+    assert "label: 'Day Ended'" in source
 
 
 def test_dashboard_exposes_projects_report_and_date_controls():
@@ -120,7 +121,7 @@ def test_dashboard_is_square_edged_and_uses_available_width():
 
     assert "border-radius: 0 !important" in styles
     assert "main { width: 100%; max-width: none" in styles
-    assert ".users-panel table { min-width: 1540px; }" in styles
+    assert ".users-panel table { min-width: 1660px; }" in styles
     assert "td { min-width: 0;" in styles
 
 
@@ -138,3 +139,17 @@ def test_foreground_reporting_is_opt_in_encrypted_and_visible():
     assert "presence_title_keys" in database
     assert source.count("label: 'Foreground App'") == 2
     assert source.count("label: 'Window Title'") == 2
+
+
+def test_day_ended_is_configurable_persisted_and_repaired():
+    settings = Path("server/settings.py").read_text(encoding="utf-8")
+    database = Path("server/database.py").read_text(encoding="utf-8")
+
+    assert "day_end_heartbeat_count: int = SettingsField(\n        20" in settings
+    assert '"day_end_heartbeat_count": 20' in settings
+    assert "presence_day_boundaries" in database
+    assert "SET day_ended_at = last_active_at" in database
+    assert "THEN NULL" in database
+    assert "repaired_day_ended_at(" in database
+    assert 'item["user_name"] in active_over_midnight' in database
+    assert "day_ended_at = EXCLUDED.day_ended_at" in database

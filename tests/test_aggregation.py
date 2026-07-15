@@ -39,6 +39,16 @@ def test_interval_is_clipped_at_calendar_midnight():
     assert second["total_active_seconds"] == 25 * 60
 
 
+def test_repaired_day_end_uses_midnight_for_crossing_activity():
+    last_active = utc("2026-07-12T23:58:00")
+    midnight = utc("2026-07-13T00:00:00")
+
+    assert (
+        aggregation.repaired_day_ended_at(last_active, midnight, False) == last_active
+    )
+    assert aggregation.repaired_day_ended_at(last_active, midnight, True) == midnight
+
+
 def test_dst_calendar_day_has_real_timezone_bounds():
     start, end = aggregation.utc_day_bounds(date(2026, 3, 29), "Europe/Prague")
     assert int((end - start).total_seconds()) == 23 * 60 * 60
