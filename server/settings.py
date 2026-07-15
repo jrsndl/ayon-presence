@@ -4,7 +4,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from ayon_server.settings import BaseSettingsModel, SettingsField
-from pydantic import validator
+from pydantic import root_validator, validator
 
 
 def timezone_enum_resolver() -> list[str]:
@@ -22,6 +22,13 @@ def week_start_enum_resolver() -> list[dict[str, str]]:
         {"value": "monday", "label": "Monday"},
         {"value": "sunday", "label": "Sunday"},
     ]
+
+
+async def secrets_enum_resolver(project_name: str | None = None) -> list[str]:
+    """Resolve AYON Secret names without exposing their values."""
+    from ayon_server.settings.enum import secrets_enum
+
+    return await secrets_enum(project_name)
 
 
 class PresenceSettings(BaseSettingsModel):
@@ -42,6 +49,17 @@ class PresenceSettings(BaseSettingsModel):
         ge=60,
         le=3600,
     )
+    day_end_heartbeat_count: int = SettingsField(
+        20,
+        title="Day End quiet heartbeats",
+        description=(
+            "Number of heartbeat intervals without newer input after which the "
+            "user's last active time is recorded as Day Ended. Later activity "
+            "removes Day Ended until the user becomes inactive again."
+        ),
+        ge=1,
+        le=288,
+    )
     active_idle_threshold_seconds: int = SettingsField(
         300,
         title="Idle threshold (seconds)",
@@ -59,6 +77,43 @@ class PresenceSettings(BaseSettingsModel):
             "Record active intervals for the native AYON project/folder/task "
             "context selected by application launches and host task changes."
         ),
+    )
+    foreground_application_enabled: bool = SettingsField(
+        False,
+        title="Report foreground application",
+        description=(
+            "Report the executable name of the foreground Windows application "
+            "when it changes. Application names are stored as plaintext."
+        ),
+    )
+    foreground_title_enabled: bool = SettingsField(
+        False,
+        title="Report foreground application title",
+        description=(
+            "Report the foreground window or browser-tab title when it changes. "
+            "Titles may contain sensitive data and are encrypted before database "
+            "storage using the selected AYON Secret."
+        ),
+    )
+    foreground_title_max_length: int = SettingsField(
+        32,
+        title="Maximum foreground title length",
+        description=(
+            "Maximum number of title characters collected after control-character "
+            "and whitespace cleanup."
+        ),
+        ge=1,
+        le=512,
+    )
+    foreground_title_secret: str = SettingsField(
+        "",
+        title="Foreground title passphrase secret",
+        description=(
+            "AYON Secret containing the passphrase used to derive the title "
+            "encryption key. For rotation, create and select a new secret instead "
+            "of changing an existing secret value."
+        ),
+        enum_resolver=secrets_enum_resolver,
     )
     disconnect_timeout_seconds: int = SettingsField(
         600,
@@ -141,12 +196,25 @@ class PresenceSettings(BaseSettingsModel):
             raise ValueError(f"Unknown IANA timezone: {value}") from exc
         return value
 
+    @root_validator
+    def require_foreground_title_secret(cls, values):
+        if values.get("foreground_title_enabled") and not values.get(
+            "foreground_title_secret"
+        ):
+            raise ValueError("Foreground title reporting requires an AYON Secret")
+        return values
+
 
 DEFAULT_VALUES: dict[str, Any] = {
     "enabled": True,
     "heartbeat_interval_seconds": 300,
+    "day_end_heartbeat_count": 20,
     "active_idle_threshold_seconds": 300,
     "task_tracking_enabled": True,
+    "foreground_application_enabled": False,
+    "foreground_title_enabled": False,
+    "foreground_title_max_length": 32,
+    "foreground_title_secret": "",
     "disconnect_timeout_seconds": 600,
     "daily_summary_run_time": "04:00",
     "timezone": "Europe/Prague",

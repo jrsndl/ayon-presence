@@ -64,7 +64,25 @@ def test_settings_validate_run_time_and_timezone(monkeypatch):
 
     assert settings.PresenceSettings().daily_summary_run_time == "04:00"
     assert settings.PresenceSettings().task_tracking_enabled is True
+    assert settings.PresenceSettings().foreground_application_enabled is False
+    assert settings.PresenceSettings().foreground_title_enabled is False
+    assert settings.PresenceSettings().day_end_heartbeat_count == 20
     with pytest.raises(pydantic.ValidationError):
         settings.PresenceSettings(daily_summary_run_time="25:00")
     with pytest.raises(pydantic.ValidationError):
         settings.PresenceSettings(timezone="Not/A-Timezone")
+    with pytest.raises(pydantic.ValidationError):
+        settings.PresenceSettings(foreground_title_enabled=True)
+
+
+def test_foreground_event_cleans_control_characters():
+    models = load_module("presence_foreground_models", "server/models.py")
+    event = models.PresenceEvent(
+        event_type="foreground_change",
+        session_id="session-1",
+        machine_name="WS-01",
+        foreground_application="chrome.exe",
+        foreground_title="  Client\nReview\t— Chrome  ",
+    )
+
+    assert event.foreground_title == "Client Review — Chrome"

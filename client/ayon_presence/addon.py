@@ -7,6 +7,7 @@ from ayon_core.addon import AYONAddon, ITrayAddon
 from ayon_core.lib.events import register_event_callback
 
 from .activity import ActivityMonitor
+from .foreground import ForegroundMonitor
 from .reporter import PresenceReporter
 from .task_tracking import (
     host_metadata,
@@ -32,8 +33,16 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         self.heartbeat_seconds = settings.get("heartbeat_interval_seconds", 300)
         self.idle_threshold_seconds = settings.get("active_idle_threshold_seconds", 300)
         self.task_tracking_enabled = settings.get("task_tracking_enabled", True)
+        self.foreground_application_enabled = settings.get(
+            "foreground_application_enabled", False
+        )
+        self.foreground_title_enabled = settings.get("foreground_title_enabled", False)
+        self.foreground_title_max_length = settings.get(
+            "foreground_title_max_length", 32
+        )
         self._reporter = None
         self._monitor = None
+        self._foreground_monitor = None
         self._host = None
 
         if platform.system().lower() != "windows":
@@ -55,6 +64,12 @@ class PresenceAddon(AYONAddon, ITrayAddon):
 
         self._monitor = ActivityMonitor(self.idle_threshold_seconds, on_state_change)
         self._reporter.attach_monitor(self._monitor)
+        self._foreground_monitor = ForegroundMonitor(
+            self.foreground_application_enabled,
+            self.foreground_title_enabled,
+            self.foreground_title_max_length,
+            self._reporter.foreground_changed,
+        )
 
     def tray_menu(self, tray_menu):
         """Presence runs silently and does not add a tray menu action."""
@@ -65,8 +80,12 @@ class PresenceAddon(AYONAddon, ITrayAddon):
             return
         self._monitor.start()
         self._reporter.start()
+        if self._foreground_monitor is not None:
+            self._foreground_monitor.start()
 
     def tray_exit(self, *_args, **_kwargs):
+        if self._foreground_monitor is not None:
+            self._foreground_monitor.stop()
         if self._reporter is not None:
             self._reporter.stop()
         if self._monitor is not None:
@@ -100,9 +119,7 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         event_data = getattr(event, "data", event)
         metadata = {}
         if isinstance(event_data, dict) and event_data.get("filepath"):
-            metadata["workfile_name"] = workfile_name_from_path(
-                event_data["filepath"]
-            )
+            metadata["workfile_name"] = workfile_name_from_path(event_data["filepath"])
         self._report_current_host_context(metadata=metadata)
 
     def _report_current_host_context(self, project_name=None, metadata=None):

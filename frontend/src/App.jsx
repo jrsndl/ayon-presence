@@ -100,12 +100,15 @@ const userColumns = [
   },
   { key: 'dcc', label: 'DCC' },
   { key: 'workfile', label: 'Workfile' },
+  { key: 'foreground_application', label: 'Foreground App' },
+  { key: 'foreground_title', label: 'Window Title' },
   { key: 'last_active_at', label: 'Last Active', render: (row) => relativeTime(row.last_active_at) },
   { key: 'last_project', label: 'Last Project' },
   { key: 'last_folder', label: 'Last Folder' },
   { key: 'last_task', label: 'Last Task' },
   { key: 'last_task_seconds', label: 'Last Task Time', render: (row) => duration(row.last_task_seconds) },
   { key: 'day_started_at', label: 'Day Started', render: (row) => timeOfDay(row.day_started_at) },
+  { key: 'day_ended_at', label: 'Day Ended', render: (row) => timeOfDay(row.day_ended_at) },
 ]
 
 const computerColumns = [
@@ -154,6 +157,8 @@ const eventColumns = [
   { key: 'dcc_name', label: 'DCC Name' },
   { key: 'dcc_version', label: 'DCC Version' },
   { key: 'workfile_name', label: 'Workfile' },
+  { key: 'foreground_application', label: 'Foreground App' },
+  { key: 'foreground_title', label: 'Window Title' },
 ]
 
 const presets = [

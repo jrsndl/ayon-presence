@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, root_validator, validator
 
 
 EventType = Literal[
@@ -15,6 +15,7 @@ EventType = Literal[
     "task_start",
     "task_heartbeat",
     "task_stop",
+    "foreground_change",
 ]
 
 
@@ -34,6 +35,22 @@ class PresenceEvent(BaseModel):
     dcc_name: Optional[str] = Field(default=None, max_length=255)
     dcc_version: Optional[str] = Field(default=None, max_length=128)
     workfile_name: Optional[str] = Field(default=None, max_length=1024)
+    foreground_application: Optional[str] = Field(default=None, max_length=255)
+    foreground_title: Optional[str] = Field(default=None, max_length=1024)
+
+    @validator("foreground_application", "foreground_title")
+    def clean_foreground_text(cls, value):
+        if value is None:
+            return None
+        value = " ".join(
+            "".join(
+                " "
+                if ord(character) < 32 or 127 <= ord(character) <= 159
+                else character
+                for character in value
+            ).split()
+        )
+        return value or None
 
     @root_validator
     def validate_task_context(cls, values):

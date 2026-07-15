@@ -30,6 +30,8 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
             "last_input_at": utc(10),
             "last_heartbeat_at": utc(10),
             "is_connected": True,
+            "foreground_application": "nuke.exe",
+            "foreground_title": "sh010 comp",
         },
         {
             "user_name": "bob",
@@ -51,7 +53,13 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
             "workfile_name": "sh010_comp_v012.nk",
         }
     ]
-    day_starts = [{"user_name": "alice", "day_started_at": utc(7)}]
+    day_boundaries = [
+        {
+            "user_name": "alice",
+            "day_started_at": utc(7),
+            "day_ended_at": utc(11),
+        }
+    ]
 
     machine_contexts = [
         {
@@ -61,7 +69,7 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
         }
     ]
     result = dashboard.build_dashboard_rows(
-        sessions, tasks, day_starts, machine_contexts
+        sessions, tasks, day_boundaries, machine_contexts
     )
 
     alice = result["users"][0]
@@ -76,7 +84,10 @@ def test_dashboard_prioritizes_latest_user_machine_and_lists_others():
         "last_task_seconds": 3600,
         "dcc": "NukeX 15.2.1",
         "workfile": "sh010_comp_v012.nk",
+        "foreground_application": "nuke.exe",
+        "foreground_title": "sh010 comp",
         "day_started_at": utc(7),
+        "day_ended_at": utc(11),
     }
     new_computer = next(
         row for row in result["computers"] if row["computer_name"] == "WS-NEW"

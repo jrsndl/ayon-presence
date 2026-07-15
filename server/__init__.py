@@ -27,6 +27,7 @@ from .database import (
 )
 from .models import PresenceEvent
 from .settings import DEFAULT_VALUES, PresenceSettings
+from .title_crypto import TitleEncryptionError
 
 
 class PresenceAddon(BaseServerAddon):
@@ -59,10 +60,69 @@ class PresenceAddon(BaseServerAddon):
             return {"success": False, "reason": "disabled"}
         if event.event_type.startswith("task_") and not settings.task_tracking_enabled:
             return {"success": False, "reason": "task_tracking_disabled"}
-        received_at = await record_event(
-            user.name, event, settings.active_idle_threshold_seconds
+        if event.event_type == "foreground_change":
+            if not (
+                settings.foreground_application_enabled
+                or settings.foreground_title_enabled
+            ):
+                return {"success": False, "reason": "foreground_reporting_disabled"}
+            event = event.copy(
+                update={
+                    "foreground_application": (
+                        event.foreground_application
+                        if settings.foreground_application_enabled
+                        else None
+                    ),
+                    "foreground_title": (
+                        event.foreground_title[: settings.foreground_title_max_length]
+                        if settings.foreground_title_enabled and event.foreground_title
+                        else None
+                    ),
+                }
+            )
+        else:
+            event = event.copy(
+                update={
+                    "foreground_application": None,
+                    "foreground_title": None,
+                }
+            )
+        title_key_name = (
+            settings.foreground_title_secret
+            if settings.foreground_title_enabled
+            else None
         )
-        return {"success": True, "server_time": received_at}
+        title_stored = True
+        try:
+            received_at = await record_event(
+                user.name,
+                event,
+                settings.active_idle_threshold_seconds,
+                settings.timezone,
+                settings.heartbeat_interval_seconds,
+                settings.day_end_heartbeat_count,
+                title_key_name,
+            )
+        except TitleEncryptionError:
+            logger.warning(
+                "Presence could not encrypt a foreground title; storing the "
+                "application change without its title"
+            )
+            title_stored = False
+            event = event.copy(update={"foreground_title": None})
+            received_at = await record_event(
+                user.name,
+                event,
+                settings.active_idle_threshold_seconds,
+                settings.timezone,
+                settings.heartbeat_interval_seconds,
+                settings.day_end_heartbeat_count,
+            )
+        return {
+            "success": True,
+            "server_time": received_at,
+            "foreground_title_stored": title_stored,
+        }
 
     async def get_users(self, user: CurrentUser) -> dict:
         del user
@@ -70,13 +130,19 @@ class PresenceAddon(BaseServerAddon):
         result = await dashboard_data(
             settings.timezone, settings.disconnect_timeout_seconds
         )
-        result.update({
-            "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
-            "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
-            "projects_default_date_range": settings.projects_default_date_range,
-            "projects_week_start": settings.projects_week_start,
-            "raw_events_debug_enabled": settings.raw_events_debug_enabled,
-        })
+        result.update(
+            {
+                "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
+                "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
+                "projects_default_date_range": settings.projects_default_date_range,
+                "projects_week_start": settings.projects_week_start,
+                "raw_events_debug_enabled": settings.raw_events_debug_enabled,
+                "foreground_application_enabled": (
+                    settings.foreground_application_enabled
+                ),
+                "foreground_title_enabled": settings.foreground_title_enabled,
+            }
+        )
         return result
 
     async def get_project_time(

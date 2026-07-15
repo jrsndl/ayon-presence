@@ -21,7 +21,7 @@ p { margin: 0; }
 .section-heading > span { color: #7f899a; font-size: .78rem; }
 .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: .82rem; }
-.users-panel table { min-width: 1280px; }
+.users-panel table { min-width: 1660px; }
 .computers-panel table { min-width: 640px; }
 .projects-panel table { min-width: 560px; }
 .projects-panel { overflow: visible; }
@@ -29,7 +29,7 @@ table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 
 .projects-panel th:nth-child(2) { width: 50%; }
 .projects-panel th:nth-child(3) { width: 12%; }
 .projects-panel th:nth-child(4) { width: 18%; }
-.events-panel table { min-width: 2500px; }
+.events-panel table { min-width: 2780px; }
 .events-panel th { width: 140px; }
 .events-panel th:nth-child(1) { width: 80px; }
 .events-panel th:nth-child(2), .events-panel th:nth-child(9), .events-panel th:nth-child(10), .events-panel th:nth-child(15) { width: 190px; }

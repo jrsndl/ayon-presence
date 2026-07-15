@@ -1,8 +1,12 @@
 # AYON Presence
 
+> **Platform support:** AYON Presence is a Windows-only addon. Its tray activity
+> and foreground application monitoring do not run on Linux or macOS.
+
 AYON addon that records whether authenticated tray users are connected and
-recently active, without recording keys, clicks, cursor positions, window
-titles, or absolute workfile paths.
+recently active, without recording keys, clicks, cursor positions, or absolute
+workfile paths. Optional foreground application and encrypted window-title
+reporting are disabled by default.
 
 The launcher client listens only for the fact that keyboard or mouse input
 occurred. It posts an event immediately when the user changes between active
@@ -18,6 +22,8 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 - Sortable user, computer, and project activity subtabs with DCC, workfile,
   date-range, and project-time context.
 - Optional manager-only raw Events debug tab with cursor-based lazy loading.
+- Opt-in foreground application reporting and passphrase-encrypted window titles,
+  emitted only when foreground context changes.
 - Startup workfile and configured DCC metadata for hosts that load files after
   AYON host installation or omit runtime application information.
 - Raw events, sessions, durable activity intervals, and daily summaries.
@@ -33,11 +39,15 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Setting | Default |
 | --- | --- |
 | Heartbeat | 300 seconds |
+| Day End quiet heartbeats | 20 |
 | Active/idle threshold | 300 seconds |
 | Disconnect timeout | 600 seconds |
 | Summary run time | 04:00 |
 | Reporting timezone | Europe/Prague |
 | Per-task active-time tracking | Enabled |
+| Foreground application reporting | Disabled |
+| Foreground application title reporting | Disabled |
+| Maximum foreground title length | 32 characters |
 | Raw event retention | 90 days |
 | Raw events debug view | Enabled |
 | Projects calendar week start | Monday |
@@ -50,7 +60,7 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.6.1.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.6.2.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
 The Presence web page is registered in AYON's **Settings** frontend scope. AYON
@@ -62,11 +72,37 @@ browser.
 Presence requires AYON Core only. It does not require or integrate with ftrack
 or Timers Manager, so neither addon needs to be included in the bundle.
 
+## Foreground reporting
+
+Foreground application and title reporting are independent opt-in studio
+settings and currently run on Windows trays. Application executable names are
+stored as plaintext. Titles are stripped of control characters, whitespace
+normalized, truncated to the configured limit, and encrypted with AES-256-GCM
+before they are written to PostgreSQL.
+
+Title reporting requires selecting an AYON Secret containing a passphrase.
+Presence derives the encryption key with scrypt and stores only the Secret name,
+a random non-secret salt, ciphertext, and nonce. Keep old Secrets when rotating
+keys so retained events remain readable; create a new Secret name instead of
+changing an existing value. A server restart is required after changing a
+Secret's value because derived keys are cached in server memory.
+
+## Workday boundaries
+
+The Users table shows Day Started and Day Ended in the reporting timezone. Day
+Ended is set to the last input time after the configured number of heartbeat
+intervals pass without newer activity. New activity clears Day Ended. Daily
+summary processing repairs historical boundaries from retained activity data;
+when activity crosses a calendar boundary, the earlier day ends exactly at local
+midnight.
+
 The server creates these tables in the `public` schema on setup:
 
 - `presence_sessions`
 - `presence_events`
+- `presence_title_keys`
 - `presence_activity_intervals`
+- `presence_day_boundaries`
 - `presence_task_intervals`
 - `presence_daily_activity`
 - `presence_summary_runs`
@@ -123,7 +159,8 @@ previous interval. Matching notifications from another tray refresh the existing
 interval, avoiding double-counting when the same AYON user is active on multiple
 machines.
 
-Presence deliberately does not inspect foreground windows, application names,
-workfile names, keystrokes, clicks, or cursor positions. If multiple AYON hosts
-are open, the last native AYON task selection remains selected until another
-launch or `taskChanged` event selects a different task.
+Presence never records keystrokes, clicks, cursor positions, or absolute workfile
+paths. Foreground application and title collection remain opt-in studio settings;
+titles are cleaned, length-limited, and encrypted before database storage. If
+multiple AYON hosts are open, the last native AYON task selection remains selected
+until another launch or `taskChanged` event selects a different task.
