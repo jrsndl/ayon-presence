@@ -38,8 +38,9 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Summary run time | 04:00 |
 | Reporting timezone | Europe/Prague |
 | Per-task active-time tracking | Enabled |
-| Raw event retention | 30 days |
+| Raw event retention | 90 days |
 | Raw events debug view | Enabled |
+| Projects calendar week start | Monday |
 
 ## Development
 
@@ -49,7 +50,7 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.6.0.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.6.1.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
 The Presence web page is registered in AYON's **Settings** frontend scope. AYON

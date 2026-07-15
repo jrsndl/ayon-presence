@@ -21,6 +21,32 @@ def test_presence_uses_supported_settings_frontend_scope():
     raise AssertionError("PresenceAddon.frontend_scopes is not declared")
 
 
+def test_all_presence_settings_have_tooltip_descriptions():
+    tree = ast.parse(Path("server/settings.py").read_text(encoding="utf-8"))
+    settings_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "PresenceSettings"
+    )
+    missing = []
+    for statement in settings_class.body:
+        if not isinstance(statement, ast.AnnAssign):
+            continue
+        call = statement.value
+        if not isinstance(call, ast.Call):
+            continue
+        if not isinstance(call.func, ast.Name) or call.func.id != "SettingsField":
+            continue
+        descriptions = [
+            keyword.value for keyword in call.keywords
+            if keyword.arg == "description"
+        ]
+        if not descriptions or not ast.literal_eval(descriptions[0]).strip():
+            missing.append(statement.target.id)
+
+    assert missing == []
+
+
 def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
     source = Path("frontend/src/App.jsx").read_text(encoding="utf-8")
 
@@ -39,7 +65,13 @@ def test_dashboard_exposes_projects_report_and_date_controls():
     assert "label: 'User #'" in source
     assert "row.users.join(', ')" in source
     assert "label: 'Time logged'" in source
-    assert "type=\"date\"" in source
+    assert 'role="dialog"' in source
+    assert 'role="grid"' in source
+    assert "calendarDays(visibleMonth, weekStart)" in source
+    assert "presetRange(value, weekStart)" in source
+    assert "weekStart === 'sunday'" in source
+    assert "document.addEventListener('mousedown', closeOutside)" in source
+    assert ".projects-panel { overflow: visible; }" in Path("frontend/src/styles.css").read_text(encoding="utf-8")
     assert "['this_week', 'This Week']" in source
     assert "axios.get('/project-time'" in source
 
@@ -53,6 +85,12 @@ def test_projects_default_date_range_is_configurable():
     assert '"projects_default_date_range": "this_week"' in settings
     assert 'self.add_endpoint("project-time"' in server
     assert '"projects_default_date_range": settings.projects_default_date_range' in server
+    assert "enum_resolver=timezone_enum_resolver" in settings
+    assert '"timezone": "Europe/Prague"' in settings
+    assert "raw_event_retention_days: int = SettingsField(\n        90" in settings
+    assert 'projects_week_start: Literal["monday", "sunday"]' in settings
+    assert '"projects_week_start": "monday"' in settings
+    assert '"projects_week_start": settings.projects_week_start' in server
     assert "ARRAY_AGG(DISTINCT user_name ORDER BY user_name) AS users" in database
     assert "COUNT(DISTINCT user_name)::integer AS user_count" in database
 
