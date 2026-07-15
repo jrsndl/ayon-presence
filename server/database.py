@@ -9,6 +9,7 @@ from ayon_server.lib.postgres import Postgres
 from .aggregation import ActivityInterval, summarize_day, utc_day_bounds
 from .dashboard import build_dashboard_rows
 from .models import PresenceEvent
+from .raw_events import serialize_raw_events_page
 
 
 SCHEMA_SQL = """
@@ -600,6 +601,25 @@ async def project_time_summary(
         period_end,
     )
     return [dict(row) for row in rows]
+
+
+async def raw_events_page(
+    page_size: int,
+    before_id: int | None = None,
+) -> dict:
+    """Return one newest-first page of raw PresenceEvent payloads."""
+    rows = await Postgres.fetch(
+        """
+        SELECT id, user_name, received_at, payload
+        FROM public.presence_events
+        WHERE ($2::bigint IS NULL OR id < $2)
+        ORDER BY id DESC
+        LIMIT $1
+        """,
+        page_size + 1,
+        before_id,
+    )
+    return serialize_raw_events_page(rows, page_size)
 
 
 async def missing_summary_dates(

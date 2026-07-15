@@ -15,7 +15,9 @@ events, turns them into activity intervals, and creates calendar-day summaries.
   usernames in client payloads.
 - Multi-machine sessions with crash/disconnect timeout handling.
 - Current presence API and embedded AYON web page.
-- Sortable user and computer activity subtabs with DCC and workfile context.
+- Sortable user, computer, and project activity subtabs with DCC, workfile,
+  date-range, and project-time context.
+- Optional manager-only raw Events debug tab with cursor-based lazy loading.
 - Startup workfile and configured DCC metadata for hosts that load files after
   AYON host installation or omit runtime application information.
 - Raw events, sessions, durable activity intervals, and daily summaries.
@@ -37,6 +39,7 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 | Reporting timezone | Europe/Prague |
 | Per-task active-time tracking | Enabled |
 | Raw event retention | 30 days |
+| Raw events debug view | Enabled |
 
 ## Development
 
@@ -46,7 +49,7 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.5.1.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.6.0.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
 The Presence web page is registered in AYON's **Settings** frontend scope. AYON
@@ -84,6 +87,8 @@ authentication.
 | `GET /activity?...&user_name=name` | Another user's interval log | Manager |
 | `GET /task-activity?from=YYYY-MM-DD&to=YYYY-MM-DD` | Own per-task time log | Authenticated user |
 | `GET /task-activity?...&user_name=name` | Another user's task time log | Manager |
+| `GET /project-time?from=YYYY-MM-DD&to=YYYY-MM-DD` | Project task-time totals | Manager |
+| `GET /raw-events?page_size=50&before_id=123` | Cursor-paginated raw events | Manager |
 | `GET /summaries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Daily summaries | Manager |
 
 ## Native AYON task tracking

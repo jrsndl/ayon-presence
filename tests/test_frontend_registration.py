@@ -57,6 +57,23 @@ def test_projects_default_date_range_is_configurable():
     assert "COUNT(DISTINCT user_name)::integer AS user_count" in database
 
 
+def test_events_debug_tab_is_lazy_and_configurable():
+    source = Path("frontend/src/App.jsx").read_text(encoding="utf-8")
+    settings = Path("server/settings.py").read_text(encoding="utf-8")
+    server = Path("server/__init__.py").read_text(encoding="utf-8")
+    database = Path("server/database.py").read_text(encoding="utf-8")
+
+    assert "raw_events_debug_enabled" in settings
+    assert 'self.add_endpoint("raw-events"' in server
+    assert "Raw event inspection requires manager access" in server
+    assert "ORDER BY id DESC" in database
+    assert "WHERE ($2::bigint IS NULL OR id < $2)" in database
+    assert "Events <span>{events.length}{nextEventCursor ? '+' : ''}</span>" in source
+    assert "Load 50 more" in source
+    assert "initialDirection=\"desc\"" in source
+    assert "value === null || value === undefined || value === ''" in source
+
+
 def test_dashboard_is_square_edged_and_uses_available_width():
     styles = Path("frontend/src/styles.css").read_text(encoding="utf-8")
 
