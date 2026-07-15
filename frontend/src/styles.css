@@ -28,6 +28,11 @@ table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 
 .projects-panel th:nth-child(2) { width: 50%; }
 .projects-panel th:nth-child(3) { width: 12%; }
 .projects-panel th:nth-child(4) { width: 18%; }
+.events-panel table { min-width: 2500px; }
+.events-panel th { width: 140px; }
+.events-panel th:nth-child(1) { width: 80px; }
+.events-panel th:nth-child(2), .events-panel th:nth-child(9), .events-panel th:nth-child(10), .events-panel th:nth-child(15) { width: 190px; }
+.events-panel th:nth-child(5), .events-panel th:nth-child(13), .events-panel th:nth-child(18) { width: 230px; }
 th { padding: 0; text-align: left; background: #14171d; border-bottom: 1px solid #303640; border-right: 1px solid #282e37; white-space: nowrap; }
 th:last-child, td:last-child { border-right: 0; }
 th button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border: 0; color: #b9c2cf; background: transparent; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
@@ -52,6 +57,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .date-value input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; color-scheme: dark; }
 .range-separator { color: #687383; font-size: 1.05rem; }
 .inline-error { margin: 14px 20px; }
+.heading-actions { display: flex; align-items: center; gap: 12px; color: #7f899a; font-size: .78rem; }
+.heading-actions button, .pagination button { padding: 8px 13px; border: 1px solid #3a424e; color: #dce2eb; background: #222730; font: inherit; font-weight: 700; cursor: pointer; }
+.heading-actions button:hover, .pagination button:hover { color: #fff; background: #2b323c; }
+.heading-actions button:disabled, .pagination button:disabled { cursor: wait; opacity: .55; }
+.pagination { display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 10px 20px; color: #7f899a; border-top: 1px solid #2a303a; font-size: .8rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 700px) {
   main { padding: 28px 14px 44px; }

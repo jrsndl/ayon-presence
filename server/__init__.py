@@ -19,6 +19,7 @@ from .database import (
     activity_log,
     missing_summary_dates,
     project_time_summary,
+    raw_events_page,
     prune_events,
     record_event,
     summaries,
@@ -39,6 +40,7 @@ class PresenceAddon(BaseServerAddon):
         self.add_endpoint("activity", self.get_activity, method="GET")
         self.add_endpoint("task-activity", self.get_task_activity, method="GET")
         self.add_endpoint("project-time", self.get_project_time, method="GET")
+        self.add_endpoint("raw-events", self.get_raw_events, method="GET")
         self.add_endpoint("summaries", self.get_summaries, method="GET")
 
     async def get_default_settings(self) -> PresenceSettings:
@@ -72,6 +74,7 @@ class PresenceAddon(BaseServerAddon):
             "disconnect_timeout_seconds": settings.disconnect_timeout_seconds,
             "active_idle_threshold_seconds": settings.active_idle_threshold_seconds,
             "projects_default_date_range": settings.projects_default_date_range,
+            "raw_events_debug_enabled": settings.raw_events_debug_enabled,
         })
         return result
 
@@ -91,6 +94,19 @@ class PresenceAddon(BaseServerAddon):
                 date_from, date_to, settings.timezone
             )
         }
+
+    async def get_raw_events(
+        self,
+        user: CurrentUser,
+        page_size: int = Query(50, ge=10, le=200),
+        before_id: int | None = Query(None, ge=1),
+    ) -> dict:
+        if not user.is_manager:
+            raise ForbiddenException("Raw event inspection requires manager access")
+        settings = await self.get_studio_settings()
+        if not settings.raw_events_debug_enabled:
+            raise ForbiddenException("Raw event inspection is disabled")
+        return await raw_events_page(page_size, before_id)
 
     async def get_summaries(
         self,

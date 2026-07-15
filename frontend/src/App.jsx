@@ -36,7 +36,7 @@ function timeOfDay(value) {
 }
 
 function text(value) {
-  return value || '—'
+  return value === null || value === undefined || value === '' ? '—' : value
 }
 
 function compareValues(left, right) {
@@ -53,8 +53,8 @@ function compareValues(left, right) {
   })
 }
 
-function SortableTable({ columns, rows, initialSort, emptyMessage }) {
-  const [sort, setSort] = useState({ key: initialSort, direction: 'asc' })
+function SortableTable({ columns, rows, initialSort, initialDirection = 'asc', emptyMessage }) {
+  const [sort, setSort] = useState({ key: initialSort, direction: initialDirection })
   const sortedRows = useMemo(() => {
     const column = columns.find((item) => item.key === sort.key) || columns[0]
     const direction = sort.direction === 'asc' ? 1 : -1
@@ -125,6 +125,35 @@ const projectColumns = [
   },
   { key: 'user_count', label: 'User #' },
   { key: 'total_seconds', label: 'Time logged', render: (row) => duration(row.total_seconds) },
+]
+
+function timestamp(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+}
+
+const eventColumns = [
+  { key: 'id', label: 'ID' },
+  { key: 'received_at', label: 'Received', render: (row) => timestamp(row.received_at) },
+  { key: 'user_name', label: 'User' },
+  { key: 'event_type', label: 'Event Type' },
+  { key: 'session_id', label: 'Session ID' },
+  { key: 'machine_name', label: 'Machine' },
+  { key: 'platform', label: 'Platform' },
+  { key: 'client_version', label: 'Client Version' },
+  { key: 'client_time', label: 'Client Time', render: (row) => timestamp(row.client_time) },
+  { key: 'last_input_at', label: 'Last Input', render: (row) => timestamp(row.last_input_at) },
+  { key: 'idle_seconds', label: 'Idle Seconds' },
+  { key: 'project_name', label: 'Project' },
+  { key: 'folder_path', label: 'Folder' },
+  { key: 'task_name', label: 'Task' },
+  { key: 'task_started_at', label: 'Task Started', render: (row) => timestamp(row.task_started_at) },
+  { key: 'dcc_name', label: 'DCC Name' },
+  { key: 'dcc_version', label: 'DCC Version' },
+  { key: 'workfile_name', label: 'Workfile' },
 ]
 
 const presets = [
@@ -209,11 +238,17 @@ export default function App() {
   const [error, setError] = useState('')
   const [projectError, setProjectError] = useState('')
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [events, setEvents] = useState([])
+  const [nextEventCursor, setNextEventCursor] = useState(null)
+  const [eventsError, setEventsError] = useState('')
+  const [eventsLoading, setEventsLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
   const [activeTab, setActiveTab] = useState('users')
   const [preset, setPreset] = useState('this_week')
   const [range, setRange] = useState(() => presetRange('this_week'))
   const initializedPreset = useRef(false)
+  const eventsInitialized = useRef(false)
+  const eventsRequestInFlight = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -266,6 +301,38 @@ export default function App() {
     return () => { cancelled = true }
   }, [activeTab, range])
 
+  useEffect(() => {
+    if (activeTab === 'events' && data.raw_events_debug_enabled && !eventsInitialized.current) {
+      loadEvents(true)
+    }
+    if (activeTab === 'events' && data.raw_events_debug_enabled === false) {
+      setActiveTab('users')
+    }
+  }, [activeTab, data.raw_events_debug_enabled])
+
+  async function loadEvents(reset = false) {
+    if (eventsRequestInFlight.current) return
+    eventsRequestInFlight.current = true
+    eventsInitialized.current = true
+    setEventsLoading(true)
+    try {
+      const cursor = reset ? null : nextEventCursor
+      const response = await axios.get('/raw-events', {
+        params: { page_size: 50, ...(cursor ? { before_id: cursor } : {}) },
+      })
+      setEvents((current) => reset
+        ? response.data.events || []
+        : [...current, ...(response.data.events || [])])
+      setNextEventCursor(response.data.next_cursor || null)
+      setEventsError('')
+    } catch (requestError) {
+      setEventsError(requestError.message)
+    } finally {
+      eventsRequestInFlight.current = false
+      setEventsLoading(false)
+    }
+  }
+
   function selectPreset(value) {
     setPreset(value)
     if (value !== 'custom') setRange(presetRange(value))
@@ -297,6 +364,9 @@ export default function App() {
       <button type="button" role="tab" aria-selected={activeTab === 'projects'} onClick={() => setActiveTab('projects')}>
         Projects <span>{projects.length}</span>
       </button>
+      {data.raw_events_debug_enabled && <button type="button" role="tab" aria-selected={activeTab === 'events'} onClick={() => setActiveTab('events')}>
+        Events <span>{events.length}{nextEventCursor ? '+' : ''}</span>
+      </button>}
     </div>
     <div className="tab-content">
       <section className="panel users-panel" role="tabpanel" hidden={activeTab !== 'users'}>
@@ -327,6 +397,21 @@ export default function App() {
           ? <div className="loading">Loading project time…</div>
           : <SortableTable columns={projectColumns} rows={projects} initialSort="project_name" emptyMessage="No task time was logged in this date range." />}
       </section>
+      {data.raw_events_debug_enabled && <section className="panel events-panel" role="tabpanel" hidden={activeTab !== 'events'}>
+        <div className="section-heading">
+          <div><p className="section-label">Debug</p><h2>Raw events</h2></div>
+          <div className="heading-actions"><span>{events.length} loaded</span><button type="button" onClick={() => loadEvents(true)} disabled={eventsLoading}>Refresh</button></div>
+        </div>
+        {eventsError && <div className="error inline-error">Could not load raw events: {eventsError}</div>}
+        {eventsLoading && !events.length
+          ? <div className="loading">Loading raw events…</div>
+          : <SortableTable columns={eventColumns} rows={events} initialSort="id" initialDirection="desc" emptyMessage="No retained raw events were found." />}
+        {!!events.length && <div className="pagination">
+          {nextEventCursor
+            ? <button type="button" onClick={() => loadEvents(false)} disabled={eventsLoading}>{eventsLoading ? 'Loading…' : 'Load 50 more'}</button>
+            : <span>All retained events loaded</span>}
+        </div>}
+      </section>}
     </div>
   </main>
 }

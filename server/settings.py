@@ -40,6 +40,14 @@ class PresenceSettings(BaseSettingsModel):
     raw_event_retention_days: int = SettingsField(
         30, title="Raw event retention (days)", ge=1, le=3650
     )
+    raw_events_debug_enabled: bool = SettingsField(
+        True,
+        title="Enable raw events debug view",
+        description=(
+            "Expose the manager-only Events tab and paginated raw event API. "
+            "Disable this when raw event inspection is not needed."
+        ),
+    )
     projects_default_date_range: Literal[
         "today",
         "yesterday",
@@ -74,5 +82,6 @@ DEFAULT_VALUES: dict[str, Any] = {
     "daily_summary_run_time": "04:00",
     "timezone": "Europe/Prague",
     "raw_event_retention_days": 30,
+    "raw_events_debug_enabled": True,
     "projects_default_date_range": "this_week",
 }
