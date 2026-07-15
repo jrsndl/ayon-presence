@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 
-def test_presence_uses_supported_settings_frontend_scope():
+def test_presence_uses_settings_and_artist_dashboard_frontend_scopes():
     tree = ast.parse(Path("server/__init__.py").read_text(encoding="utf-8"))
 
     for node in tree.body:
@@ -15,7 +15,10 @@ def test_presence_uses_supported_settings_frontend_scope():
                 isinstance(target, ast.Name) and target.id == "frontend_scopes"
                 for target in statement.targets
             ):
-                assert ast.literal_eval(statement.value) == {"settings": {}}
+                assert ast.literal_eval(statement.value) == {
+                    "settings": {},
+                    "dashboard": {},
+                }
                 return
 
     raise AssertionError("PresenceAddon.frontend_scopes is not declared")

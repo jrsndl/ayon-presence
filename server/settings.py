@@ -187,6 +187,77 @@ class PresenceSettings(BaseSettingsModel):
         ),
         enum_resolver=week_start_enum_resolver,
     )
+    timelog_enabled: bool = SettingsField(
+        True,
+        title="Enable Presence TimeLog",
+        description=(
+            "Show the artist TimeLog page and enable editable copies of automatic "
+            "task records, manual timers, submission, and review workflows."
+        ),
+    )
+    timelog_auto_submit_enabled: bool = SettingsField(
+        False,
+        title="Automatically submit TimeLogs",
+        description=(
+            "Submit complete stopped artist TimeLogs automatically after the "
+            "configured number of hours without edits."
+        ),
+    )
+    timelog_auto_submit_hours: int = SettingsField(
+        24,
+        title="TimeLog auto-submit delay (hours)",
+        description=(
+            "Hours a complete stopped TimeLog remains unedited before automatic "
+            "submission when auto-submit is enabled."
+        ),
+        ge=1,
+        le=720,
+    )
+    timelog_auto_approve_enabled: bool = SettingsField(
+        False,
+        title="Automatically approve TimeLogs",
+        description=(
+            "Approve submitted TimeLogs automatically when a manager or admin has "
+            "not reviewed them within the configured number of days."
+        ),
+    )
+    timelog_auto_approve_days: int = SettingsField(
+        7,
+        title="TimeLog auto-approval delay (days)",
+        description=(
+            "Days a submitted TimeLog waits for manager review before automatic "
+            "approval when auto-approval is enabled."
+        ),
+        ge=1,
+        le=365,
+    )
+    timelog_default_start_hour: str = SettingsField(
+        "09:00",
+        title="Default artist start hour",
+        description=(
+            "Start time used when an artist enters a duration into an empty "
+            "Timesheet day and no earlier TimeLog determines the next free time."
+        ),
+        regex=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+    )
+    timelog_assigned_tasks_only: bool = SettingsField(
+        True,
+        title="Default to assigned tasks only",
+        description=(
+            "Default artist preference for limiting the task picker to tasks "
+            "assigned to the authenticated user. Artists may change this preference."
+        ),
+    )
+    timelog_bid_attribute: str = SettingsField(
+        "bidHours",
+        title="Task bid-hours attribute",
+        description=(
+            "AYON task attribute name containing the studio bid in hours. The "
+            "TimeLog views use it for bid comparisons and percentages."
+        ),
+        min_length=1,
+        max_length=128,
+    )
 
     @validator("timezone")
     def validate_timezone(cls, value: str) -> str:
@@ -222,4 +293,12 @@ DEFAULT_VALUES: dict[str, Any] = {
     "raw_events_debug_enabled": True,
     "projects_default_date_range": "this_week",
     "projects_week_start": "monday",
+    "timelog_enabled": True,
+    "timelog_auto_submit_enabled": False,
+    "timelog_auto_submit_hours": 24,
+    "timelog_auto_approve_enabled": False,
+    "timelog_auto_approve_days": 7,
+    "timelog_default_start_hour": "09:00",
+    "timelog_assigned_tasks_only": True,
+    "timelog_bid_attribute": "bidHours",
 }

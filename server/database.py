@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS public.presence_sessions (
     foreground_application TEXT,
     foreground_title_ciphertext BYTEA,
     foreground_title_nonce BYTEA,
-    foreground_title_key_name TEXT
+    foreground_title_key_name TEXT,
+    tray_timezone TEXT
 );
 CREATE INDEX IF NOT EXISTS presence_sessions_user_machine_idx
     ON public.presence_sessions (user_name, machine_name, last_heartbeat_at DESC);
@@ -49,6 +50,8 @@ ALTER TABLE public.presence_sessions
     ADD COLUMN IF NOT EXISTS foreground_title_nonce BYTEA;
 ALTER TABLE public.presence_sessions
     ADD COLUMN IF NOT EXISTS foreground_title_key_name TEXT;
+ALTER TABLE public.presence_sessions
+    ADD COLUMN IF NOT EXISTS tray_timezone TEXT;
 
 CREATE TABLE IF NOT EXISTS public.presence_events (
     id BIGSERIAL PRIMARY KEY,
@@ -225,6 +228,9 @@ async def _rows_with_decrypted_titles(rows) -> list[dict]:
             row.get("foreground_title_nonce"),
             row.get("foreground_title_key_name"),
         )
+        row.pop("foreground_title_ciphertext", None)
+        row.pop("foreground_title_nonce", None)
+        row.pop("foreground_title_key_name", None)
         result.append(row)
     return result
 
@@ -285,8 +291,8 @@ async def record_event(
                 session_id, user_name, machine_name, platform, client_version,
                 started_at, last_heartbeat_at, last_input_at, idle_seconds, state,
                 foreground_application, foreground_title_ciphertext,
-                foreground_title_nonce, foreground_title_key_name
-            ) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $11, $12, $13, $14)
+                foreground_title_nonce, foreground_title_key_name, tray_timezone
+            ) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $11, $12, $13, $14, $15)
             ON CONFLICT (session_id) DO UPDATE SET
                 last_heartbeat_at = EXCLUDED.last_heartbeat_at,
                 last_input_at = EXCLUDED.last_input_at,
@@ -309,7 +315,8 @@ async def record_event(
                 foreground_title_key_name = CASE
                     WHEN $10 = 'foreground_change' THEN $14
                     ELSE presence_sessions.foreground_title_key_name
-                END
+                END,
+                tray_timezone = COALESCE($15, presence_sessions.tray_timezone)
             """,
             event.session_id,
             user_name,
@@ -325,6 +332,7 @@ async def record_event(
             title_ciphertext,
             title_nonce,
             stored_key_name,
+            event.tray_timezone,
         )
 
         if state == "active" and event.event_type != "session_end":
@@ -776,19 +784,38 @@ async def activity_log(
     _, period_end = utc_day_bounds(date_to, timezone_name)
     rows = await Postgres.fetch(
         """
-        SELECT id, user_name, machine_name, session_id, started_at,
-            COALESCE(ended_at, last_heartbeat_at) AS ended_at, status
-        FROM public.presence_activity_intervals
-        WHERE user_name = $1
-            AND started_at < $3
-            AND COALESCE(ended_at, last_heartbeat_at) > $2
-        ORDER BY started_at DESC
+        SELECT intervals.id, intervals.user_name, intervals.machine_name,
+            intervals.session_id, intervals.started_at,
+            COALESCE(intervals.ended_at, intervals.last_heartbeat_at) AS ended_at,
+            intervals.status,
+            sample.payload ->> 'foreground_application' AS foreground_application,
+            sample.foreground_title_ciphertext,
+            sample.foreground_title_nonce,
+            sample.foreground_title_key_name
+        FROM public.presence_activity_intervals intervals
+        LEFT JOIN LATERAL (
+            SELECT payload, foreground_title_ciphertext,
+                foreground_title_nonce, foreground_title_key_name
+            FROM public.presence_events events
+            WHERE events.user_name = intervals.user_name
+                AND events.session_id = intervals.session_id
+                AND events.event_type = 'foreground_change'
+                AND events.received_at <= COALESCE(
+                    intervals.ended_at, intervals.last_heartbeat_at
+                )
+            ORDER BY events.received_at DESC
+            LIMIT 1
+        ) sample ON TRUE
+        WHERE intervals.user_name = $1
+            AND intervals.started_at < $3
+            AND COALESCE(intervals.ended_at, intervals.last_heartbeat_at) > $2
+        ORDER BY intervals.started_at DESC
         """,
         user_name,
         period_start,
         period_end,
     )
-    return [dict(row) for row in rows]
+    return await _rows_with_decrypted_titles(rows)
 
 
 async def task_activity_log(
@@ -811,7 +838,7 @@ async def task_activity_log(
                 )
                 ELSE total_seconds
             END AS total_seconds,
-            source_machine_name, status
+            source_machine_name, status, dcc_name, dcc_version, workfile_name
         FROM public.presence_task_intervals
         WHERE user_name = $1
             AND started_at < $3
