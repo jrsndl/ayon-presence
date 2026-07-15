@@ -56,6 +56,55 @@ def test_host_metadata_keeps_only_workfile_filename():
     }
 
 
+def test_launch_metadata_includes_configured_dcc_and_last_workfile():
+    application = SimpleNamespace(
+        label="19.1",
+        name="19_1",
+        group=SimpleNamespace(name="resolve", label="DaVinci Resolve"),
+    )
+    metadata = task_tracking.launch_metadata(
+        {
+            "start_last_workfile": True,
+            "last_workfile_path": r"D:\project\edit_v012.drp",
+        },
+        application,
+        "resolve",
+    )
+    assert metadata == {
+        "dcc_name": "DaVinci Resolve",
+        "dcc_version": "19.1",
+        "workfile_name": "edit_v012.drp",
+    }
+
+
+def test_resolve_host_uses_ayon_application_fallback(monkeypatch):
+    monkeypatch.setenv("AYON_APP_NAME", "resolve/19.1")
+    host = SimpleNamespace(
+        name="resolve",
+        get_app_information=lambda: SimpleNamespace(
+            app_name=None, app_version=None
+        ),
+        get_current_workfile=lambda: None,
+    )
+    assert task_tracking.host_metadata(host) == {
+        "dcc_name": "DaVinci Resolve",
+        "dcc_version": "19.1",
+    }
+
+
+def test_missing_host_workfile_does_not_overwrite_launch_filename():
+    host = SimpleNamespace(
+        get_app_information=lambda: SimpleNamespace(
+            app_name="Nuke", app_version="17.0v1"
+        ),
+        get_current_workfile=lambda: None,
+    )
+    assert task_tracking.host_metadata(host) == {
+        "dcc_name": "Nuke",
+        "dcc_version": "17.0v1",
+    }
+
+
 def test_rejects_incomplete_ayon_context():
     with pytest.raises(ValueError):
         task_tracking.normalize_ayon_task_context(

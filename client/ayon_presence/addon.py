@@ -13,6 +13,7 @@ from .task_tracking import (
     normalize_ayon_task_context,
     notify_tray_task_cleared,
     notify_tray_task_selected,
+    workfile_name_from_path,
 )
 from .version import __version__
 
@@ -95,10 +96,16 @@ class PresenceAddon(AYONAddon, ITrayAddon):
         except (TypeError, ValueError):
             notify_tray_task_cleared(self.log)
 
-    def _on_workfile_change(self, _event):
-        self._report_current_host_context()
+    def _on_workfile_change(self, event):
+        event_data = getattr(event, "data", event)
+        metadata = {}
+        if isinstance(event_data, dict) and event_data.get("filepath"):
+            metadata["workfile_name"] = workfile_name_from_path(
+                event_data["filepath"]
+            )
+        self._report_current_host_context(metadata=metadata)
 
-    def _report_current_host_context(self, project_name=None):
+    def _report_current_host_context(self, project_name=None, metadata=None):
         host = self._host
         if host is None:
             return
@@ -109,6 +116,7 @@ class PresenceAddon(AYONAddon, ITrayAddon):
                 "task_name": host.get_current_task_name(),
             }
             context.update(host_metadata(host))
+            context.update(metadata or {})
             notify_tray_task_selected(context, self.log)
         except Exception:
             self.log.debug("Presence host context is not available yet", exc_info=True)

@@ -100,6 +100,32 @@ def test_workfile_update_does_not_restart_task_interval():
     assert events[-1][1]["workfile_name"] == "b.nk"
 
 
+def test_early_host_sample_preserves_launch_metadata_across_idle_resume():
+    reporter, events = _reporter()
+    reporter.task_selected(
+        {
+            **CONTEXT,
+            "dcc_name": "DaVinci Resolve",
+            "dcc_version": "19.1",
+            "workfile_name": "edit_v012.drp",
+        }
+    )
+
+    reporter.task_selected({**CONTEXT, "dcc_name": "DaVinci Resolve"})
+    reporter.activity_state_changed(False)
+    reporter.activity_state_changed(True)
+
+    assert [event_type for event_type, _context in events] == [
+        "task_start",
+        "task_heartbeat",
+        "task_stop",
+        "task_start",
+    ]
+    resumed = events[-1][1]
+    assert resumed["dcc_version"] == "19.1"
+    assert resumed["workfile_name"] == "edit_v012.drp"
+
+
 def test_send_posts_event_fields_at_top_level(monkeypatch):
     reporter, _events = _reporter()
     payload = {
