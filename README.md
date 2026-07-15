@@ -1,5 +1,8 @@
 # AYON Presence
 
+> **Platform support:** AYON Presence is a Windows-only addon. Its tray activity
+> and foreground application monitoring do not run on Linux or macOS.
+
 AYON addon that records whether authenticated tray users are connected and
 recently active, without recording keys, clicks, cursor positions, or absolute
 workfile paths. Optional foreground application and encrypted window-title
