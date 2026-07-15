@@ -183,11 +183,6 @@ function isoDate(value) {
   return `${year}-${month}-${day}`
 }
 
-function parseDate(value) {
-  const [year, month, day] = value.split('-').map(Number)
-  return dateOnly(year, month - 1, day)
-}
-
 function presetRange(preset, now = new Date()) {
   const today = dateOnly(now.getFullYear(), now.getMonth(), now.getDate())
   const mondayOffset = (today.getDay() + 6) % 7
@@ -217,18 +212,95 @@ function presetRange(preset, now = new Date()) {
   }
 }
 
+const weekdayLabels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+function sameDate(left, right) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate()
+}
+
+function calendarDays(month) {
+  const first = dateOnly(month.getFullYear(), month.getMonth(), 1)
+  const mondayOffset = (first.getDay() + 6) % 7
+  const gridStart = addDays(first, -mondayOffset)
+  return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
+}
+
 function DateWidget({ label, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [visibleMonth, setVisibleMonth] = useState(() => dateOnly(value.getFullYear(), value.getMonth(), 1))
+  const rootRef = useRef(null)
   const display = value.toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
   })
-  return <div className="date-field">
+
+  useEffect(() => {
+    if (!open) return undefined
+    function closeOutside(event) {
+      if (!rootRef.current?.contains(event.target)) setOpen(false)
+    }
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  function toggleCalendar() {
+    if (!open) setVisibleMonth(dateOnly(value.getFullYear(), value.getMonth(), 1))
+    setOpen((current) => !current)
+  }
+
+  function selectDate(date) {
+    onChange(date)
+    setOpen(false)
+  }
+
+  const monthLabel = visibleMonth.toLocaleDateString(undefined, {
+    month: 'long', year: 'numeric',
+  })
+  const today = new Date()
+
+  return <div className="date-field" ref={rootRef}>
     <span className="sr-only">{label}</span>
     <button type="button" className="date-arrow" aria-label={`Previous ${label.toLowerCase()}`} onClick={() => onChange(addDays(value, -1))}>‹</button>
-    <label className="date-value">
-      <span>{display}</span>
-      <input type="date" aria-label={label} value={isoDate(value)} onChange={(event) => onChange(parseDate(event.target.value))} />
-    </label>
+    <button type="button" className="date-value" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={toggleCalendar}>{display}</button>
     <button type="button" className="date-arrow" aria-label={`Next ${label.toLowerCase()}`} onClick={() => onChange(addDays(value, 1))}>›</button>
+    {open && <div className="calendar-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+      <div className="calendar-heading">
+        <strong>{monthLabel}</strong>
+        <div>
+          <button type="button" aria-label="Previous month" onClick={() => setVisibleMonth((current) => dateOnly(current.getFullYear(), current.getMonth() - 1, 1))}>‹</button>
+          <button type="button" aria-label="Next month" onClick={() => setVisibleMonth((current) => dateOnly(current.getFullYear(), current.getMonth() + 1, 1))}>›</button>
+        </div>
+      </div>
+      <div className="calendar-weekdays" aria-hidden="true">
+        {weekdayLabels.map((weekday) => <span key={weekday}>{weekday}</span>)}
+      </div>
+      <div className="calendar-grid" role="grid">
+        {calendarDays(visibleMonth).map((day) => {
+          const outside = day.getMonth() !== visibleMonth.getMonth()
+          const selected = sameDate(day, value)
+          const isToday = sameDate(day, today)
+          const classNames = ['calendar-day', outside ? 'outside' : '', selected ? 'selected' : '', isToday ? 'today' : ''].filter(Boolean).join(' ')
+          return <button
+            type="button"
+            role="gridcell"
+            className={classNames}
+            aria-label={day.toLocaleDateString(undefined, { dateStyle: 'full' })}
+            aria-selected={selected}
+            key={isoDate(day)}
+            onClick={() => selectDate(day)}
+          >{day.getDate()}</button>
+        })}
+      </div>
+      <button type="button" className="calendar-today" onClick={() => selectDate(dateOnly(today.getFullYear(), today.getMonth(), today.getDate()))}>Today</button>
+    </div>}
   </div>
 }
 

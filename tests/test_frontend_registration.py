@@ -39,7 +39,11 @@ def test_dashboard_exposes_projects_report_and_date_controls():
     assert "label: 'User #'" in source
     assert "row.users.join(', ')" in source
     assert "label: 'Time logged'" in source
-    assert "type=\"date\"" in source
+    assert 'role="dialog"' in source
+    assert 'role="grid"' in source
+    assert "calendarDays(visibleMonth)" in source
+    assert "document.addEventListener('mousedown', closeOutside)" in source
+    assert ".projects-panel { overflow: visible; }" in Path("frontend/src/styles.css").read_text(encoding="utf-8")
     assert "['this_week', 'This Week']" in source
     assert "axios.get('/project-time'" in source
 
