@@ -21,6 +21,32 @@ def test_presence_uses_supported_settings_frontend_scope():
     raise AssertionError("PresenceAddon.frontend_scopes is not declared")
 
 
+def test_all_presence_settings_have_tooltip_descriptions():
+    tree = ast.parse(Path("server/settings.py").read_text(encoding="utf-8"))
+    settings_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "PresenceSettings"
+    )
+    missing = []
+    for statement in settings_class.body:
+        if not isinstance(statement, ast.AnnAssign):
+            continue
+        call = statement.value
+        if not isinstance(call, ast.Call):
+            continue
+        if not isinstance(call.func, ast.Name) or call.func.id != "SettingsField":
+            continue
+        descriptions = [
+            keyword.value for keyword in call.keywords
+            if keyword.arg == "description"
+        ]
+        if not descriptions or not ast.literal_eval(descriptions[0]).strip():
+            missing.append(statement.target.id)
+
+    assert missing == []
+
+
 def test_dashboard_defaults_to_users_subtab_and_exposes_new_columns():
     source = Path("frontend/src/App.jsx").read_text(encoding="utf-8")
 
