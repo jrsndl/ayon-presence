@@ -1,6 +1,6 @@
 name = "presence"
 title = "Presence TimeLog"
-version = "0.7.0"
+version = "0.7.1"
 
 client_dir = "ayon_presence"
 
