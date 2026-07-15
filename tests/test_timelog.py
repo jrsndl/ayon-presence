@@ -102,3 +102,15 @@ def test_tray_advertises_timezone_without_third_party_dependencies():
     assert "def local_timezone_name()" in reporter
     assert "tray_timezone: Optional[str]" in models
     assert "ADD COLUMN IF NOT EXISTS tray_timezone TEXT" in database
+
+
+def test_schema_upgrades_are_ensured_before_heartbeat_and_timelog_requests():
+    server = Path("server/__init__.py").read_text(encoding="utf-8")
+    frontend = Path("frontend/src/TimeLogApp.jsx").read_text(encoding="utf-8")
+
+    assert "async def _ensure_schema(self)" in server
+    assert "self._schema_lock = asyncio.Lock()" in server
+    assert server.count("await self._ensure_schema()") >= 5
+    assert "Unable to load Presence TimeLog" in frontend
+    assert "requestErrorMessage" in frontend
+    assert ">Retry</button>" in frontend
