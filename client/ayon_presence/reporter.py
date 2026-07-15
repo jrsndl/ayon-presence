@@ -62,7 +62,13 @@ class PresenceReporter:
         start_context = None
         update_context = None
         with self._task_lock:
-            self._selected_task = dict(context)
+            if self._selected_task and all(
+                self._selected_task.get(key) == context.get(key)
+                for key in TASK_IDENTITY_KEYS
+            ):
+                self._selected_task.update(context)
+            else:
+                self._selected_task = dict(context)
             if self._current_task and all(
                 self._current_task.get(key) == context.get(key)
                 for key in TASK_IDENTITY_KEYS

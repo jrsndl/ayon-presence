@@ -16,6 +16,8 @@ events, turns them into activity intervals, and creates calendar-day summaries.
 - Multi-machine sessions with crash/disconnect timeout handling.
 - Current presence API and embedded AYON web page.
 - Sortable user and computer activity subtabs with DCC and workfile context.
+- Startup workfile and configured DCC metadata for hosts that load files after
+  AYON host installation or omit runtime application information.
 - Raw events, sessions, durable activity intervals, and daily summaries.
 - Per-user project/folder/task active-time intervals from native AYON application
   launches and in-host task changes, including start, end, and total seconds.
@@ -44,7 +46,7 @@ python create_package.py
 ```
 
 The package command builds `frontend/` with npm when Node is available and
-creates `package/presence-0.4.2.zip`. Upload that zip to AYON, add Presence to a
+creates `package/presence-0.4.3.zip`. Upload that zip to AYON, add Presence to a
 bundle, configure its studio settings, and restart the tray.
 
 The Presence web page is registered in AYON's **Settings** frontend scope. AYON

@@ -7,6 +7,36 @@ from typing import Any
 
 
 OPTIONAL_CONTEXT_KEYS = ("dcc_name", "dcc_version", "workfile_name")
+DCC_DISPLAY_NAMES = {"resolve": "DaVinci Resolve"}
+
+
+def workfile_name_from_path(path: Any) -> str:
+    """Return a portable filename without exposing its absolute path."""
+    return os.path.basename(str(path).replace("\\", "/"))
+
+
+def launch_metadata(
+    data: dict[str, Any], application: Any, host_name: Any
+) -> dict[str, str]:
+    """Collect configured DCC and intended workfile data at launch time."""
+    result: dict[str, str] = {}
+    group = getattr(application, "group", None)
+    group_name = getattr(group, "name", None) or host_name
+    dcc_name = getattr(group, "label", None) or group_name
+    dcc_version = getattr(application, "label", None) or getattr(
+        application, "name", None
+    )
+    if dcc_name:
+        result["dcc_name"] = str(dcc_name)
+    if dcc_version:
+        result["dcc_version"] = str(dcc_version)
+
+    workfile_path = data.get("workfile_path")
+    if not workfile_path and data.get("start_last_workfile"):
+        workfile_path = data.get("last_workfile_path")
+    if workfile_path:
+        result["workfile_name"] = workfile_name_from_path(workfile_path)
+    return result
 
 
 def normalize_ayon_task_context(data: dict[str, Any]) -> dict[str, str]:
@@ -40,25 +70,34 @@ def normalize_ayon_task_context(data: dict[str, Any]) -> dict[str, str]:
 def host_metadata(host: Any) -> dict[str, str]:
     """Collect portable application metadata without exposing full paths."""
     result: dict[str, str] = {}
+    app_name = None
+    app_version = None
     try:
         app_info = host.get_app_information()
-        if app_info.app_name:
-            result["dcc_name"] = str(app_info.app_name)
-        if app_info.app_version:
-            result["dcc_version"] = str(app_info.app_version)
+        app_name = app_info.app_name
+        app_version = app_info.app_version
     except Exception:
         pass
+
+    configured_app = os.environ.get("AYON_APP_NAME", "")
+    configured_group, separator, configured_variant = configured_app.partition("/")
+    fallback_name = getattr(host, "name", None) or configured_group
+    if fallback_name:
+        fallback_name = DCC_DISPLAY_NAMES.get(fallback_name, fallback_name)
+    app_name = app_name or fallback_name
+    app_version = app_version or (configured_variant if separator else None)
+    if app_name:
+        result["dcc_name"] = str(app_name)
+    if app_version:
+        result["dcc_version"] = str(app_version)
 
     if hasattr(host, "get_current_workfile"):
         try:
             workfile_path = host.get_current_workfile()
         except Exception:
             workfile_path = None
-        result["workfile_name"] = (
-            os.path.basename(workfile_path.replace("\\", "/"))
-            if workfile_path
-            else "Untitled"
-        )
+        if workfile_path:
+            result["workfile_name"] = workfile_name_from_path(workfile_path)
     return result
 
 

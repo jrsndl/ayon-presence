@@ -2,7 +2,7 @@
 
 from ayon_applications import LaunchTypes, PostLaunchHook
 
-from ayon_presence.task_tracking import notify_tray_task_selected
+from ayon_presence.task_tracking import launch_metadata, notify_tray_task_selected
 
 
 class PostSelectPresenceTaskHook(PostLaunchHook):
@@ -17,6 +17,7 @@ class PostSelectPresenceTaskHook(PostLaunchHook):
             "folder_path": self.data.get("folder_path"),
             "task_name": self.data.get("task_name"),
         }
+        context.update(launch_metadata(self.data, self.application, self.host_name))
         if not all(context.values()):
             self.log.debug("Presence task hook skipped: incomplete AYON context")
             return
